@@ -36,6 +36,6 @@ runs:
         install: true
 
     - name: Invoke Taskfile
-      uses: soltiHQ/actions/taskfile@main
+      uses:  ./taskfile
       with:
         command: ${{ inputs.image }}
