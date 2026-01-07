@@ -11,6 +11,9 @@ inputs:
   image:
     description: 'Image name / Taskfile command'
     required: true
+  version:
+    description: 'Image version'
+    required: true
 
 runs:
   using: "composite"
@@ -36,6 +39,7 @@ runs:
         install: true
 
     - name: Invoke Taskfile
-      uses:  soltiHQ/actions/taskfile@main
+      uses: soltiHQ/actions/taskfile@main
       with:
         command: ${{ inputs.image }}
+        vars: VERSION=${{ inputs.version }}
