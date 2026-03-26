@@ -55,7 +55,9 @@ runs:
     - name: Run Task command
       shell: bash
       working-directory: ${{ inputs.dir }}
+      env:
+        TASK_X_REMOTE_TASKFILES: "1"
       run: |
         set -euo pipefail
         echo "🚀 Running task ${{ inputs.command }}"
-        task ${{ inputs.command }}
+        task --trust ${{ inputs.command }}
