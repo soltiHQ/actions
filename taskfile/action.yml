@@ -60,4 +60,4 @@ runs:
       run: |
         set -euo pipefail
         echo "🚀 Running task ${{ inputs.command }}"
-        task --trust ${{ inputs.command }}
+        task --yes ${{ inputs.command }}
