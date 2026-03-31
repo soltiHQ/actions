@@ -61,6 +61,7 @@ tasks:
       _root:
         sh: git rev-parse --show-toplevel
     cmds:
+      - cmd: echo "DEBUG git_root=[{{.git_root}}]"
       - cmd: mkdir -p "{{._root}}/{{.cache_dir}}"
       - task: _docker/run
         vars:
