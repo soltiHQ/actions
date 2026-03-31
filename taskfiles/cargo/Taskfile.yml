@@ -53,20 +53,22 @@ tasks:
         {{.CMD}}
 
   _cargo/tool:
-    desc: Internal wrapper for running cargo tools.
     internal: true
     silent: true
     requires:
       vars: [ CMD ]
+    vars:
+      _root:
+        sh: git rev-parse --show-toplevel
     cmds:
-      - cmd: mkdir -p "{{.git_root}}/{{.cache_dir}}"
+      - cmd: mkdir -p "{{._root}}/{{.cache_dir}}"
       - task: _docker/run
         vars:
           IMAGE: "ghcr.io/soltihq/rust-ci:{{.rust_version}}{{.image_patch}}"
           CMD: "{{.CMD}}"
           MOUNT_DIR: "."
           VOLUMES:
-            - "{{.git_root}}/{{.cache_dir}}:/tmp/{{.cache_dir}}"
+            - "{{._root}}/{{.cache_dir}}:/tmp/{{.cache_dir}}"
           ENVS:
             - "CARGO_TARGET_DIR=/tmp/{{.cache_dir}}/target"
             - "CARGO_HOME=/tmp/{{.cache_dir}}/cargo"
