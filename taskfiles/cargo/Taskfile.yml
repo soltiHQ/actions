@@ -9,7 +9,7 @@ vars:
 
   # Optional: override via includes.vars
   cache_dir: '{{.cache_dir | default ".cache"}}'
-  image_patch: '{{.image_patch | default "-1"}}'
+  image_patch: '{{.image_patch | default ""}}'
 
 tasks:
   default:
@@ -28,7 +28,6 @@ tasks:
     silent: true
     requires:
       vars: [ IMAGE, CMD, MOUNT_DIR ]
-    dir: "{{.git_root}}"
     cmd: |
       set -euo pipefail
 
@@ -53,23 +52,20 @@ tasks:
         {{.CMD}}
 
   _cargo/tool:
+    desc: Internal wrapper for running cargo tools.
     internal: true
     silent: true
     requires:
       vars: [ CMD ]
-    vars:
-      _root:
-        sh: git rev-parse --show-toplevel
     cmds:
-      - cmd: echo "DEBUG git_root=[{{.git_root}}]"
-      - cmd: mkdir -p "{{._root}}/{{.cache_dir}}"
+      - cmd: mkdir -p "{{.git_root}}/{{.cache_dir}}"
       - task: _docker/run
         vars:
           IMAGE: "ghcr.io/soltihq/rust-ci:{{.rust_version}}{{.image_patch}}"
           CMD: "{{.CMD}}"
           MOUNT_DIR: "."
           VOLUMES:
-            - "{{._root}}/{{.cache_dir}}:/tmp/{{.cache_dir}}"
+            - "{{.git_root}}/{{.cache_dir}}:/tmp/{{.cache_dir}}"
           ENVS:
             - "CARGO_TARGET_DIR=/tmp/{{.cache_dir}}/target"
             - "CARGO_HOME=/tmp/{{.cache_dir}}/cargo"
