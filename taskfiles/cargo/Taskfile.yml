@@ -138,6 +138,22 @@ tasks:
         vars:
           CMD: "publish --dry-run -p {{.CRATE}} {{.PUBLISH_ARGS}}"
 
+  cargo/docs:
+    desc: Run 'rustdoc' for a crate in docs.rs emulation mode (requires nightly).
+    silent: true
+    requires:
+      vars: [ CRATE ]
+    vars:
+      MANIFEST_PATH: '{{.MANIFEST_PATH | default (printf "crates/%s/Cargo.toml" .CRATE)}}'
+      DOCS_ARGS: '{{.DOCS_ARGS | default "--all-features"}}'
+    cmds:
+      - task: _cargo/tool
+        vars:
+          CMD: >-
+            +nightly rustdoc --lib --manifest-path {{.MANIFEST_PATH}} {{.DOCS_ARGS}}
+            -Zrustdoc-map -Zunstable-options -Zrustdoc-scrape-examples
+            --config 'build.rustdocflags=["--cfg","docsrs","-Z","unstable-options","--cap-lints","warn"]'
+
   # ================================================#
   # ----------------------MANUAL--------------------#
   # ================================================#

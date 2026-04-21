@@ -36,15 +36,16 @@ All modules are referenced by `@main`.
 
 `taskfiles/cargo/Taskfile.yml`: Rust CI tasks running inside a sandboxed Docker image.
 
-| Task                    | Command                                                    |
-|-------------------------|------------------------------------------------------------|
-| `cargo/fmt`             | `cargo fmt --check --verbose`                              |
-| `cargo/check`           | `cargo check`                                              |
-| `cargo/clippy`          | `cargo clippy --all --all-features -- -D warnings`         |
-| `cargo/test`            | `cargo test --all --all-features`                          |
-| `cargo/audit`           | `cargo audit`                                              |
-| `cargo/publish-dry-run` | `cargo publish --dry-run -p <CRATE>` (requires `CRATE`)    |
-| `cargo/audit/fix`       | `cargo audit fix` — manual                                 |
+| Task                    | Command                                                         |
+|-------------------------|-----------------------------------------------------------------|
+| `cargo/fmt`             | `cargo fmt --check --verbose`                                   |
+| `cargo/check`           | `cargo check`                                                   |
+| `cargo/clippy`          | `cargo clippy --all --all-features -- -D warnings`              |
+| `cargo/test`            | `cargo test --all --all-features`                               |
+| `cargo/audit`           | `cargo audit`                                                   |
+| `cargo/publish-dry-run` | `cargo publish --dry-run -p <CRATE>` (requires `CRATE`)         |
+| `cargo/docs`            | `rustdoc` in docs.rs emulation mode (nightly, requires `CRATE`) |
+| `cargo/audit/fix`       | `cargo audit fix` — manual                                      |
 
 Defaults for arg-like variables (`FMT_ARGS`, `CHECK_ARGS`, `CLIPPY_ARGS`, `TEST_ARGS`, `PUBLISH_ARGS`) can be overridden per call.
 
