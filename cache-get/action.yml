@@ -8,7 +8,7 @@ inputs:
     description: Path(s) to restore. Multiline allowed (one path per line).
     required: true
   key:
-    description: Cache key (usually '<prefix>-${{ hashFiles(...) }}').
+    description: "Cache key (usually '<prefix>-HASH', where HASH is produced by hashFiles() in the calling workflow)."
     required: true
   restore-keys:
     description: Optional fallback keys for partial matches (multiline).
