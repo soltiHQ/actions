@@ -15,7 +15,7 @@ runs:
   using: composite
   steps:
     - name: Save cache
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       with:
         path: ${{ inputs.paths }}
         key: ${{ inputs.key }}
