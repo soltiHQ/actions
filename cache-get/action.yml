@@ -29,9 +29,9 @@ runs:
         PATHS: ${{ inputs.paths }}
       run: |
         set -euo pipefail
-        while IFS= read -r p; do
-          [ -n "$p" ] && mkdir -p "$p"
-        done <<< "$PATHS"
+        for p in $PATHS; do
+          mkdir -p "$p"
+        done
 
     - name: Restore cache
       id: cache
