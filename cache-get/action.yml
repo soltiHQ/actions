@@ -1,0 +1,42 @@
+name: Cache Get
+description: >-
+  Restore a cache entry by path(s) and key. 
+  Generic wrapper around actions/cache/restore.
+
+inputs:
+  paths:
+    description: Path(s) to restore. Multiline allowed (one path per line).
+    required: true
+  key:
+    description: Cache key (usually '<prefix>-${{ hashFiles(...) }}').
+    required: true
+  restore-keys:
+    description: Optional fallback keys for partial matches (multiline).
+    required: false
+    default: ""
+
+outputs:
+  cache-hit:
+    description: "'true' if an exact key match was found"
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare cache dirs
+      shell: bash
+      env:
+        PATHS: ${{ inputs.paths }}
+      run: |
+        set -euo pipefail
+        while IFS= read -r p; do
+          [ -n "$p" ] && mkdir -p "$p"
+        done <<< "$PATHS"
+
+    - name: Restore cache
+      id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ inputs.paths }}
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}

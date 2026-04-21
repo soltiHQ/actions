@@ -1,0 +1,21 @@
+name: Cache Put
+description: >-
+  Save a cache entry by path(s) and key. 
+  Generic wrapper around actions/cache/save.
+
+inputs:
+  paths:
+    description: Path(s) to save. Multiline allowed (one path per line).
+    required: true
+  key:
+    description: Cache key.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Save cache
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ inputs.paths }}
+        key: ${{ inputs.key }}

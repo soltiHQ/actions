@@ -126,6 +126,18 @@ tasks:
         vars:
           CMD: "audit"
 
+  cargo/publish-dry-run:
+    desc: Simulate 'cargo publish' for a crate (packaging + build verify, no upload).
+    silent: true
+    requires:
+      vars: [ CRATE ]
+    vars:
+      PUBLISH_ARGS: '{{.PUBLISH_ARGS | default "--all-features"}}'
+    cmds:
+      - task: _cargo/tool
+        vars:
+          CMD: "publish --dry-run -p {{.CRATE}} {{.PUBLISH_ARGS}}"
+
   # ================================================#
   # ----------------------MANUAL--------------------#
   # ================================================#
