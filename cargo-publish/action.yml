@@ -1,25 +1,27 @@
 name: Cargo publish
 description: >-
-  Publish a Rust crate to crates.io.
+  Publish one or more Rust crates to crates.io, in the given order.
   Soft-exit on 'already exists' and retry on HTTP 429.
 
 inputs:
-  crate:
-    description: Crate name (the '-p' argument to cargo publish)
+  crates:
+    description: |
+      Crate names to publish, in dependency order (one per line, or whitespace-separated).
+      Single crate is allowed.
     required: true
   token:
-    description: crates.io registry token (secrets.CRATES_IO_TOKEN or equivalent)
+    description: crates.io registry token (secrets.CRATES_IO_TOKEN or equivalent).
     required: true
   all-features:
-    description: Pass '--all-features' to cargo publish
+    description: Pass '--all-features' to cargo publish.
     required: false
     default: "true"
   max-attempts:
-    description: Maximum attempts on HTTP 429
+    description: Maximum attempts on HTTP 429 (per crate).
     required: false
     default: "5"
   backoff-seconds:
-    description: Sleep between retries on HTTP 429 (crates.io new-crates window is ~10 min)
+    description: Sleep between retries on HTTP 429 (crates.io new-crates window is ~10 min).
     required: false
     default: "600"
 
@@ -28,7 +30,7 @@ runs:
   steps:
     - shell: bash
       env:
-        CRATE: ${{ inputs.crate }}
+        CRATES: ${{ inputs.crates }}
         CARGO_REGISTRY_TOKEN: ${{ inputs.token }}
         ALL_FEATURES: ${{ inputs.all-features }}
         MAX_ATTEMPTS: ${{ inputs.max-attempts }}
@@ -36,39 +38,46 @@ runs:
       run: |
         set -uo pipefail
 
-        args=(publish -p "$CRATE")
+        base_args=(publish)
         if [ "$ALL_FEATURES" = "true" ]; then
-          args+=(--all-features)
+          base_args+=(--all-features)
         fi
 
-        attempt=0
-        while : ; do
-          attempt=$((attempt + 1))
-          echo "::group::[$CRATE] attempt $attempt/$MAX_ATTEMPTS: cargo ${args[*]}"
-          out=$(cargo "${args[@]}" 2>&1) && status=0 || status=$?
-          printf '%s\n' "$out"
-          echo "::endgroup::"
+        publish_one() {
+          local crate=$1
+          local attempt=0
+          while : ; do
+            attempt=$((attempt + 1))
+            echo "::group::[$crate] attempt $attempt/$MAX_ATTEMPTS: cargo ${base_args[*]} -p $crate"
+            out=$(cargo "${base_args[@]}" -p "$crate" 2>&1) && status=0 || status=$?
+            printf '%s\n' "$out"
+            echo "::endgroup::"
 
-          if [ "$status" -eq 0 ]; then
-            echo "[$CRATE] published successfully"
-            exit 0
-          fi
-
-          if printf '%s' "$out" | grep -qiE 'already (exists|uploaded)|is already uploaded'; then
-            echo "[$CRATE] already published at this version — soft-exit"
-            exit 0
-          fi
-
-          if printf '%s' "$out" | grep -qiE '429 Too Many Requests|published too many|rate[[:space:]]*limit'; then
-            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
-              echo "::error::[$CRATE] rate-limited, exhausted $MAX_ATTEMPTS attempts"
-              exit 1
+            if [ "$status" -eq 0 ]; then
+              echo "[$crate] published successfully"
+              return 0
             fi
-            echo "::warning::[$CRATE] rate-limited, sleeping ${BACKOFF_SECONDS}s before retry"
-            sleep "$BACKOFF_SECONDS"
-            continue
-          fi
 
-          echo "::error::[$CRATE] publish failed (exit $status)"
-          exit "$status"
+            if printf '%s' "$out" | grep -qiE 'already (exists|uploaded)|is already uploaded'; then
+              echo "[$crate] already published at this version — soft-exit"
+              return 0
+            fi
+
+            if printf '%s' "$out" | grep -qiE '429 Too Many Requests|published too many|rate[[:space:]]*limit'; then
+              if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+                echo "::error::[$crate] rate-limited, exhausted $MAX_ATTEMPTS attempts"
+                return 1
+              fi
+              echo "::warning::[$crate] rate-limited, sleeping ${BACKOFF_SECONDS}s before retry"
+              sleep "$BACKOFF_SECONDS"
+              continue
+            fi
+
+            echo "::error::[$crate] publish failed (exit $status)"
+            return "$status"
+          done
+        }
+
+        for crate in $CRATES; do
+          publish_one "$crate" || exit $?
         done
