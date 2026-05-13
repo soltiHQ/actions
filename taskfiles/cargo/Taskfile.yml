@@ -98,6 +98,18 @@ tasks:
         vars:
           CMD: "check {{.CHECK_ARGS}}"
 
+  cargo/build:
+    desc: Run 'cargo build' for a specific crate.
+    silent: true
+    requires:
+      vars: [ CRATE ]
+    vars:
+      BUILD_ARGS: '{{.BUILD_ARGS | default ""}}'
+    cmds:
+      - task: _cargo/tool
+        vars:
+          CMD: "build -p {{.CRATE}} {{.BUILD_ARGS}}"
+
   cargo/clippy:
     desc: Run 'cargo clippy'.
     silent: true
