@@ -123,3 +123,63 @@ tasks:
       - task: _go/tool
         vars:
           CMD: "go mod tidy"
+
+  go/mod/vendor:
+    desc: Run 'go mod vendor'.
+    silent: true
+    cmds:
+      - task: _go/tool
+        vars:
+          CMD: "go mod vendor"
+
+  go/build:
+    desc: Build a Go binary. Pass NAME (required), MAIN_PKG, GOOS, GOARCH, BUILD_ARGS.
+    silent: true
+    requires:
+      vars: [ NAME ]
+    vars:
+      MAIN_PKG:   '{{.MAIN_PKG | default "./cmd"}}'
+      GOOS:       '{{.GOOS | default "linux"}}'
+      GOARCH:     '{{.GOARCH | default "amd64"}}'
+      BUILD_ARGS: '{{.BUILD_ARGS | default "-trimpath -ldflags=\"-s -w\""}}'
+    cmds:
+      - task: _go/tool
+        vars:
+          CMD: >-
+            sh -c 'mkdir -p bin &&
+            CGO_ENABLED=0 GOOS={{.GOOS}} GOARCH={{.GOARCH}}
+            go build {{.BUILD_ARGS}}
+            -o bin/{{.NAME}}-{{.GOOS}}-{{.GOARCH}} {{.MAIN_PKG}}'
+
+  go/proto/gen:
+    desc: Run 'buf generate'. Pass BUF_ARGS to override.
+    silent: true
+    vars:
+      BUF_ARGS: '{{.BUF_ARGS | default ""}}'
+    cmds:
+      - task: _go/tool
+        vars:
+          CMD: "buf generate {{.BUF_ARGS}}"
+
+  go/templ/gen:
+    desc: Run 'templ generate'. Pass TEMPL_ARGS to override.
+    silent: true
+    vars:
+      TEMPL_ARGS: '{{.TEMPL_ARGS | default ""}}'
+    cmds:
+      - task: _go/tool
+        vars:
+          CMD: "templ generate {{.TEMPL_ARGS}}"
+
+  go/tailwindcss/gen:
+    desc: Run 'tailwindcss' compile. Pass CONFIG / INPUT / OUTPUT / TAILWIND_ARGS.
+    silent: true
+    requires:
+      vars: [ INPUT, OUTPUT ]
+    vars:
+      CONFIG:         '{{.CONFIG | default "tailwind.config.cjs"}}'
+      TAILWIND_ARGS:  '{{.TAILWIND_ARGS | default "--minify"}}'
+    cmds:
+      - task: _go/tool
+        vars:
+          CMD: "tailwindcss -c {{.CONFIG}} -i {{.INPUT}} -o {{.OUTPUT}} {{.TAILWIND_ARGS}}"
