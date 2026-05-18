@@ -63,13 +63,21 @@ tasks:
             - "GOCACHE=/tmp/{{.cache_dir}}/build"
 
   gofumpt:
-    desc: Run 'gofumpt'.
+    desc: Check Go files are gofumpt-formatted (read-only; fails if any differ).
     silent: true
     internal: true
     cmds:
       - task: _go/tool
         vars:
-          CMD: sh -c 'git ls-files "*.go" | grep -v "^vendor/" | xargs -r gofumpt -l -w'
+          CMD: >-
+            sh -c '
+              bad=$(git ls-files "*.go" | grep -v "^vendor/" | xargs -r gofumpt -l);
+              if [ -n "$bad" ]; then
+                echo "gofumpt: unformatted files:";
+                printf "  %s\n" $bad;
+                exit 1;
+              fi
+            '
 
   golangci:
     desc: Run 'golangci-lint'.
@@ -175,3 +183,12 @@ tasks:
       - task: _go/tool
         vars:
           CMD: "go mod vendor"
+
+  fmt:
+    desc: Run 'gofumpt fix'.
+    silent: true
+    internal: true
+    cmds:
+      - task: _go/tool
+        vars:
+          CMD: sh -c 'git ls-files "*.go" | grep -v "^vendor/" | xargs -r gofumpt -l -w'
