@@ -68,17 +68,19 @@ tasks:
             - "GOMODCACHE=/tmp/{{.cache_dir}}/mod"
             - "GOCACHE=/tmp/{{.cache_dir}}/build"
 
-  go/fumpt:
+  gofumpt:
     desc: Run 'gofumpt'.
     silent: true
+    internal: true
     cmds:
       - task: _go/tool
         vars:
           CMD: 'gofumpt -l -w $(git ls-files "*.go")'
 
-  go/lint:
+  golangci:
     desc: Run 'golangci-lint'.
     silent: true
+    internal: true
     vars:
       LINT_ARGS: '{{.LINT_ARGS | default "./..."}}'
     cmds:
@@ -86,9 +88,10 @@ tasks:
         vars:
           CMD: "golangci-lint run {{.LINT_ARGS}}"
 
-  go/build:
+  build:
     desc: Run 'go build' for a specific GOOS / GOARCH.
     silent: true
+    internal: true
     requires:
       vars: [ NAME ]
     vars:
@@ -105,9 +108,10 @@ tasks:
             go build {{.BUILD_ARGS}}
             -o bin/{{.NAME}}-{{.GOOS}}-{{.GOARCH}} {{.MAIN_PKG}}'
 
-  go/vulnerability:
+  govulncheck:
     desc: Run 'govulncheck'.
     silent: true
+    internal: true
     vars:
       VULN_ARGS: '{{.VULN_ARGS | default "./..."}}'
     cmds:
@@ -115,9 +119,10 @@ tasks:
         vars:
           CMD: "govulncheck {{.VULN_ARGS}}"
 
-  go/test:
+  test:
     desc: Run 'go test'.
     silent: true
+    internal: true
     vars:
       TEST_ARGS: '{{.TEST_ARGS | default "./..."}}'
     cmds:
@@ -125,25 +130,10 @@ tasks:
         vars:
           CMD: "go test {{.TEST_ARGS}}"
 
-  go/mod/tidy:
-    desc: Run 'go mod tidy'.
-    silent: true
-    cmds:
-      - task: _go/tool
-        vars:
-          CMD: "go mod tidy"
-
-  go/mod/vendor:
-    desc: Run 'go mod vendor'.
-    silent: true
-    cmds:
-      - task: _go/tool
-        vars:
-          CMD: "go mod vendor"
-
-  go/proto/gen:
+  proto/gen:
     desc: Run 'buf generate'.
     silent: true
+    internal: true
     vars:
       BUF_ARGS: '{{.BUF_ARGS | default ""}}'
     cmds:
@@ -151,9 +141,10 @@ tasks:
         vars:
           CMD: "buf generate {{.BUF_ARGS}}"
 
-  go/templ/gen:
+  templ/gen:
     desc: Run 'templ generate'.
     silent: true
+    internal: true
     vars:
       TEMPL_ARGS: '{{.TEMPL_ARGS | default ""}}'
     cmds:
@@ -161,9 +152,10 @@ tasks:
         vars:
           CMD: "templ generate {{.TEMPL_ARGS}}"
 
-  go/tailwindcss/gen:
+  tailwindcss/gen:
     desc: Run 'tailwindcss' compile.
     silent: true
+    internal: true
     requires:
       vars: [ INPUT, OUTPUT ]
     vars:
@@ -173,3 +165,19 @@ tasks:
       - task: _go/tool
         vars:
           CMD: "tailwindcss -c {{.CONFIG}} -i {{.INPUT}} -o {{.OUTPUT}} {{.TAILWIND_ARGS}}"
+
+  tidy:
+    desc: Run 'go mod tidy'.
+    silent: true
+    cmds:
+      - task: _go/tool
+        vars:
+          CMD: "go mod tidy"
+
+  vendor:
+    desc: Run 'go mod vendor'.
+    silent: true
+    cmds:
+      - task: _go/tool
+        vars:
+          CMD: "go mod vendor"
