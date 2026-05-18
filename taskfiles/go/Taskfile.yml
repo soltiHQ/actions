@@ -9,7 +9,7 @@ vars:
 
   # Optional: override via includes.vars
   cache_dir: '{{.cache_dir | default ".cache"}}'
-  image_patch: '{{.image_ci_patch | default ""}}'
+  image_patch: '{{.image_patch | default ""}}'
 
 tasks:
   _docker/run:
