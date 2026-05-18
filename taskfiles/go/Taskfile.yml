@@ -69,7 +69,7 @@ tasks:
     cmds:
       - task: _go/tool
         vars:
-          CMD: 'gofumpt -l -w $(git ls-files "*.go")'
+          CMD: sh -c 'git ls-files "*.go" | grep -v "^vendor/" | xargs -r gofumpt -l -w'
 
   golangci:
     desc: Run 'golangci-lint'.
