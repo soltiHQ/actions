@@ -51,7 +51,7 @@ tasks:
       - cmd: mkdir -p "{{.git_root}}/{{.cache_dir}}"
       - task: _docker/run
         vars:
-          IMAGE: "{{.image_ci}}"
+          IMAGE: "ghcr.io/soltihq/golang-ci:{{.go_version}}{{.image_patch}}"
           CMD: "{{.CMD}}"
           MOUNT_DIR: "."
           VOLUMES:
