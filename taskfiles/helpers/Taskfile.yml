@@ -5,15 +5,10 @@ vars:
     sh: git rev-parse --show-toplevel
 
 tasks:
-  default:
-    desc: Re-usable tasks with common commands.
-    cmds:
-      - echo "Please enter a task or use '-l' or '--list-all' to list all available tasks"
-    silent: true
-
   download/file:
     desc: Download a file.
     silent: true
+    internal: true
     requires:
       vars: [ URL, TO ]
     cmds:

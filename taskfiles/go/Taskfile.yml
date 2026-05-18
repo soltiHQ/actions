@@ -12,12 +12,6 @@ vars:
   image_patch: '{{.image_ci_patch | default ""}}'
 
 tasks:
-  default:
-    desc: Re-usable tasks for golang projects.
-    cmds:
-      - echo "Please enter a task or use '-l' or '--list-all' to list all available tasks"
-    silent: true
-
   _docker/run:
     internal: true
     silent: true
