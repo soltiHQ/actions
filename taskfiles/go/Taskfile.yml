@@ -3,11 +3,9 @@ version: '3'
 vars:
   git_root:
     sh: git rev-parse --show-toplevel
+  go_version:
+    sh: grep '^go ' {{.git_root}}/go.mod | awk '{print $2}'
 
-  # Required: set via includes.vars
-  go_version: '{{.go_version}}'
-
-  # Optional: override via includes.vars
   cache_dir: '{{.cache_dir | default ".cache"}}'
   image_patch: '{{.image_patch | default ""}}'
 
@@ -17,7 +15,6 @@ tasks:
     silent: true
     requires:
       vars: [ IMAGE, CMD, MOUNT_DIR ]
-    dir: "{{.git_root}}"
     cmd: |
       set -euo pipefail
 
@@ -42,7 +39,6 @@ tasks:
         {{.CMD}}
 
   _go/tool:
-    desc: Internal wrapper for running Go tools.
     internal: true
     silent: true
     requires:
@@ -63,9 +59,8 @@ tasks:
             - "GOCACHE=/tmp/{{.cache_dir}}/build"
 
   gofumpt:
-    desc: Check Go files are gofumpt-formatted (read-only; fails if any differ).
-    silent: true
     internal: true
+    silent: true
     cmds:
       - task: _go/tool
         vars:
@@ -80,9 +75,8 @@ tasks:
             '
 
   golangci:
-    desc: Run 'golangci-lint'.
-    silent: true
     internal: true
+    silent: true
     vars:
       LINT_ARGS: '{{.LINT_ARGS | default "./..."}}'
     cmds:
@@ -91,16 +85,15 @@ tasks:
           CMD: "golangci-lint run {{.LINT_ARGS}}"
 
   build:
-    desc: Run 'go build' for a specific GOOS / GOARCH.
-    silent: true
     internal: true
+    silent: true
     requires:
       vars: [ NAME ]
     vars:
-      MAIN_PKG: '{{.MAIN_PKG | default "./cmd"}}'
-      GOOS: '{{.GOOS | default "linux"}}'
-      GOARCH: '{{.GOARCH | default "amd64"}}'
       BUILD_ARGS: '{{.BUILD_ARGS | default "-trimpath -ldflags=\"-s -w\""}}'
+      MAIN_PKG:   '{{.MAIN_PKG | default "./cmd"}}'
+      GOARCH:     '{{.GOARCH | default "amd64"}}'
+      GOOS:       '{{.GOOS | default "linux"}}'
     cmds:
       - task: _go/tool
         vars:
@@ -111,9 +104,8 @@ tasks:
             -o bin/{{.NAME}}-{{.GOOS}}-{{.GOARCH}} {{.MAIN_PKG}}'
 
   govulncheck:
-    desc: Run 'govulncheck'.
-    silent: true
     internal: true
+    silent: true
     vars:
       VULN_ARGS: '{{.VULN_ARGS | default "./..."}}'
     cmds:
@@ -122,9 +114,8 @@ tasks:
           CMD: "govulncheck {{.VULN_ARGS}}"
 
   test:
-    desc: Run 'go test'.
-    silent: true
     internal: true
+    silent: true
     vars:
       TEST_ARGS: '{{.TEST_ARGS | default "./..."}}'
     cmds:
@@ -132,10 +123,9 @@ tasks:
         vars:
           CMD: "go test {{.TEST_ARGS}}"
 
-  proto/gen:
-    desc: Run 'buf generate'.
-    silent: true
+  proto:
     internal: true
+    silent: true
     vars:
       BUF_ARGS: '{{.BUF_ARGS | default ""}}'
     cmds:
@@ -143,10 +133,9 @@ tasks:
         vars:
           CMD: "buf generate {{.BUF_ARGS}}"
 
-  templ/gen:
-    desc: Run 'templ generate'.
-    silent: true
+  templ:
     internal: true
+    silent: true
     vars:
       TEMPL_ARGS: '{{.TEMPL_ARGS | default ""}}'
     cmds:
@@ -154,15 +143,14 @@ tasks:
         vars:
           CMD: "templ generate {{.TEMPL_ARGS}}"
 
-  tailwindcss/gen:
-    desc: Run 'tailwindcss' compile.
-    silent: true
+  tailwindcss:
     internal: true
+    silent: true
     requires:
       vars: [ INPUT, OUTPUT ]
     vars:
-      CONFIG:         '{{.CONFIG | default "tailwind.config.cjs"}}'
-      TAILWIND_ARGS:  '{{.TAILWIND_ARGS | default "--minify"}}'
+      CONFIG:        '{{.CONFIG | default "tailwind.config.cjs"}}'
+      TAILWIND_ARGS: '{{.TAILWIND_ARGS | default "--minify"}}'
     cmds:
       - task: _go/tool
         vars:

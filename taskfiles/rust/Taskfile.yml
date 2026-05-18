@@ -3,28 +3,18 @@ version: '3'
 vars:
   git_root:
     sh: git rev-parse --show-toplevel
+  rust_version:
+    sh: grep -E '^rust-version[[:space:]]*=' {{.git_root}}/Cargo.toml | head -1 | awk -F'"' '{print $2}'
 
-  # Required: set via includes.vars
-  rust_version: '{{.rust_version}}'
-
-  # Optional: override via includes.vars
   cache_dir: '{{.cache_dir | default ".cache"}}'
   image_patch: '{{.image_patch | default ""}}'
 
 tasks:
-  default:
-    desc: Re-usable tasks for rust projects.
-    cmds:
-      - echo "Please enter a task or use '-l' or '--list-all' to list all available tasks"
-    silent: true
-
   _docker/run:
-    desc: Internal wrapper to run task in containers.
     internal: true
     silent: true
     requires:
       vars: [ IMAGE, CMD, MOUNT_DIR ]
-    dir: "{{.git_root}}"
     cmd: |
       set -euo pipefail
 
@@ -49,7 +39,6 @@ tasks:
         {{.CMD}}
 
   _cargo/tool:
-    desc: Internal wrapper for running cargo tools.
     internal: true
     silent: true
     requires:
@@ -71,8 +60,8 @@ tasks:
             - "CARGO_INCREMENTAL=0"
             - "RUSTFLAGS=-D warnings"
 
-  cargo/fmt:
-    desc: Run 'cargo fmt'.
+  fmt:
+    internal: true
     silent: true
     vars:
       FMT_ARGS: '{{.FMT_ARGS | default "--check --verbose"}}'
@@ -81,8 +70,8 @@ tasks:
         vars:
           CMD: "fmt {{.FMT_ARGS}}"
 
-  cargo/check:
-    desc: Run 'cargo check'.
+  check:
+    internal: true
     silent: true
     vars:
       CHECK_ARGS: '{{.CHECK_ARGS | default ""}}'
@@ -91,8 +80,8 @@ tasks:
         vars:
           CMD: "check {{.CHECK_ARGS}}"
 
-  cargo/build:
-    desc: Run 'cargo build' for a specific crate.
+  build:
+    internal: true
     silent: true
     requires:
       vars: [ CRATE ]
@@ -103,8 +92,8 @@ tasks:
         vars:
           CMD: "build -p {{.CRATE}} {{.BUILD_ARGS}}"
 
-  cargo/clippy:
-    desc: Run 'cargo clippy'.
+  clippy:
+    internal: true
     silent: true
     vars:
       CLIPPY_ARGS: '{{.CLIPPY_ARGS | default "--all --all-features -- -D warnings"}}'
@@ -113,8 +102,8 @@ tasks:
         vars:
           CMD: "clippy {{.CLIPPY_ARGS}}"
 
-  cargo/test:
-    desc: Run 'cargo test'.
+  test:
+    internal: true
     silent: true
     vars:
       TEST_ARGS: '{{.TEST_ARGS | default "--all --all-features"}}'
@@ -123,16 +112,16 @@ tasks:
         vars:
           CMD: "test {{.TEST_ARGS}}"
 
-  cargo/audit:
-    desc: Run 'audit'.
+  audit:
+    internal: true
     silent: true
     cmds:
       - task: _cargo/tool
         vars:
           CMD: "audit"
 
-  cargo/publish-dry-run:
-    desc: Simulate 'cargo publish' for a crate (packaging + build verify, no upload).
+  publish-dry-run:
+    internal: true
     silent: true
     requires:
       vars: [ CRATE ]
@@ -143,8 +132,8 @@ tasks:
         vars:
           CMD: "publish --dry-run -p {{.CRATE}} {{.PUBLISH_ARGS}}"
 
-  cargo/docs:
-    desc: Run 'rustdoc' for a crate in docs.rs emulation mode (requires nightly).
+  docs:
+    internal: true
     silent: true
     requires:
       vars: [ CRATE ]
@@ -159,7 +148,17 @@ tasks:
             -Zrustdoc-map -Zunstable-options -Zrustdoc-scrape-examples
             --config 'build.rustdocflags=["--cfg","docsrs","-Z","unstable-options","--cap-lints","warn"]'
 
-  cargo/audit/fix:
+  fmt/fix:
+    desc: Run 'cargo fmt' (auto-format).
+    silent: true
+    vars:
+      FMT_ARGS: '{{.FMT_ARGS | default ""}}'
+    cmds:
+      - task: _cargo/tool
+        vars:
+          CMD: "fmt {{.FMT_ARGS}}"
+
+  audit/fix:
     desc: Run 'audit' with auto fix.
     silent: true
     cmds:
