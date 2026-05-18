@@ -8,23 +8,17 @@ vars:
   go_version: '{{.go_version}}'
 
   # Optional: override via includes.vars
-  image_ci: '{{.image_ci | default (printf "ghcr.io/soltihq/golang-ci:%s-%s" .go_version .image_ci_patch)}}'
-  image_ci_patch: '{{.image_ci_patch | default "1"}}'
   cache_dir: '{{.cache_dir | default ".cache"}}'
+  image_patch: '{{.image_ci_patch | default ""}}'
 
 tasks:
   default:
-    desc: Default task.
+    desc: Re-usable tasks for golang projects.
     cmds:
       - echo "Please enter a task or use '-l' or '--list-all' to list all available tasks"
     silent: true
 
-  # ================================================#
-  # ---------------------INTERNAL-------------------#
-  # ================================================#
-
   _docker/run:
-    desc: Internal wrapper to run task in containers.
     internal: true
     silent: true
     requires:
@@ -74,22 +68,16 @@ tasks:
             - "GOMODCACHE=/tmp/{{.cache_dir}}/mod"
             - "GOCACHE=/tmp/{{.cache_dir}}/build"
 
-  # ================================================#
-  # ----------------------PUBLIC--------------------#
-  # ================================================#
-
-  go/test:
-    desc: Run Go tests.
+  go/fumpt:
+    desc: Run 'gofumpt'.
     silent: true
-    vars:
-      TEST_ARGS: '{{.TEST_ARGS | default "./..."}}'
     cmds:
       - task: _go/tool
         vars:
-          CMD: "go test {{.TEST_ARGS}}"
+          CMD: 'gofumpt -l -w $(git ls-files "*.go")'
 
   go/lint:
-    desc: Run Go linters.
+    desc: Run 'golangci-lint'.
     silent: true
     vars:
       LINT_ARGS: '{{.LINT_ARGS | default "./..."}}'
@@ -98,16 +86,27 @@ tasks:
         vars:
           CMD: "golangci-lint run {{.LINT_ARGS}}"
 
-  go/fumpt:
-    desc: Run Go fumpt formatter.
+  go/build:
+    desc: Run 'go build' for a specific GOOS / GOARCH.
     silent: true
+    requires:
+      vars: [ NAME ]
+    vars:
+      MAIN_PKG: '{{.MAIN_PKG | default "./cmd"}}'
+      GOOS: '{{.GOOS | default "linux"}}'
+      GOARCH: '{{.GOARCH | default "amd64"}}'
+      BUILD_ARGS: '{{.BUILD_ARGS | default "-trimpath -ldflags=\"-s -w\""}}'
     cmds:
       - task: _go/tool
         vars:
-          CMD: 'gofumpt -l -w $(git ls-files "*.go")'
+          CMD: >-
+            sh -c 'mkdir -p bin &&
+            CGO_ENABLED=0 GOOS={{.GOOS}} GOARCH={{.GOARCH}}
+            go build {{.BUILD_ARGS}}
+            -o bin/{{.NAME}}-{{.GOOS}}-{{.GOARCH}} {{.MAIN_PKG}}'
 
   go/vulnerability:
-    desc: Run vulnerability scanner.
+    desc: Run 'govulncheck'.
     silent: true
     vars:
       VULN_ARGS: '{{.VULN_ARGS | default "./..."}}'
@@ -115,6 +114,16 @@ tasks:
       - task: _go/tool
         vars:
           CMD: "govulncheck {{.VULN_ARGS}}"
+
+  go/test:
+    desc: Run 'go test'.
+    silent: true
+    vars:
+      TEST_ARGS: '{{.TEST_ARGS | default "./..."}}'
+    cmds:
+      - task: _go/tool
+        vars:
+          CMD: "go test {{.TEST_ARGS}}"
 
   go/mod/tidy:
     desc: Run 'go mod tidy'.
@@ -132,27 +141,8 @@ tasks:
         vars:
           CMD: "go mod vendor"
 
-  go/build:
-    desc: Build a Go binary. Pass NAME (required), MAIN_PKG, GOOS, GOARCH, BUILD_ARGS.
-    silent: true
-    requires:
-      vars: [ NAME ]
-    vars:
-      MAIN_PKG:   '{{.MAIN_PKG | default "./cmd"}}'
-      GOOS:       '{{.GOOS | default "linux"}}'
-      GOARCH:     '{{.GOARCH | default "amd64"}}'
-      BUILD_ARGS: '{{.BUILD_ARGS | default "-trimpath -ldflags=\"-s -w\""}}'
-    cmds:
-      - task: _go/tool
-        vars:
-          CMD: >-
-            sh -c 'mkdir -p bin &&
-            CGO_ENABLED=0 GOOS={{.GOOS}} GOARCH={{.GOARCH}}
-            go build {{.BUILD_ARGS}}
-            -o bin/{{.NAME}}-{{.GOOS}}-{{.GOARCH}} {{.MAIN_PKG}}'
-
   go/proto/gen:
-    desc: Run 'buf generate'. Pass BUF_ARGS to override.
+    desc: Run 'buf generate'.
     silent: true
     vars:
       BUF_ARGS: '{{.BUF_ARGS | default ""}}'
@@ -162,7 +152,7 @@ tasks:
           CMD: "buf generate {{.BUF_ARGS}}"
 
   go/templ/gen:
-    desc: Run 'templ generate'. Pass TEMPL_ARGS to override.
+    desc: Run 'templ generate'.
     silent: true
     vars:
       TEMPL_ARGS: '{{.TEMPL_ARGS | default ""}}'
@@ -172,7 +162,7 @@ tasks:
           CMD: "templ generate {{.TEMPL_ARGS}}"
 
   go/tailwindcss/gen:
-    desc: Run 'tailwindcss' compile. Pass CONFIG / INPUT / OUTPUT / TAILWIND_ARGS.
+    desc: Run 'tailwindcss' compile.
     silent: true
     requires:
       vars: [ INPUT, OUTPUT ]

@@ -13,14 +13,10 @@ vars:
 
 tasks:
   default:
-    desc: Default task.
+    desc: Re-usable tasks for rust projects.
     cmds:
       - echo "Please enter a task or use '-l' or '--list-all' to list all available tasks"
     silent: true
-
-  # ================================================#
-  # ---------------------INTERNAL-------------------#
-  # ================================================#
 
   _docker/run:
     desc: Internal wrapper to run task in containers.
@@ -28,6 +24,7 @@ tasks:
     silent: true
     requires:
       vars: [ IMAGE, CMD, MOUNT_DIR ]
+    dir: "{{.git_root}}"
     cmd: |
       set -euo pipefail
 
@@ -73,10 +70,6 @@ tasks:
             - "RUSTUP_NO_UPDATE_CHECK=1"
             - "CARGO_INCREMENTAL=0"
             - "RUSTFLAGS=-D warnings"
-
-  # ================================================#
-  # ----------------------PUBLIC--------------------#
-  # ================================================#
 
   cargo/fmt:
     desc: Run 'cargo fmt'.
@@ -165,10 +158,6 @@ tasks:
             +nightly rustdoc --lib --manifest-path {{.MANIFEST_PATH}} {{.DOCS_ARGS}}
             -Zrustdoc-map -Zunstable-options -Zrustdoc-scrape-examples
             --config 'build.rustdocflags=["--cfg","docsrs","-Z","unstable-options","--cap-lints","warn"]'
-
-  # ================================================#
-  # ----------------------MANUAL--------------------#
-  # ================================================#
 
   cargo/audit/fix:
     desc: Run 'audit' with auto fix.
