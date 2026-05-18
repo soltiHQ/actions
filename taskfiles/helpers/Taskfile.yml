@@ -1,0 +1,25 @@
+version: '3'
+
+vars:
+  git_root:
+    sh: git rev-parse --show-toplevel
+
+tasks:
+  default:
+    desc: Re-usable tasks with common commands.
+    cmds:
+      - echo "Please enter a task or use '-l' or '--list-all' to list all available tasks"
+    silent: true
+
+  download/file:
+    desc: Download a file.
+    silent: true
+    requires:
+      vars: [ URL, TO ]
+    cmds:
+      - |
+        if [ ! -f "{{.TO}}" ]; then
+          echo "Downloading {{.URL}}"
+          mkdir -p "$(dirname "{{.TO}}")"
+          curl -fsSL -o "{{.TO}}" "{{.URL}}"
+        fi
