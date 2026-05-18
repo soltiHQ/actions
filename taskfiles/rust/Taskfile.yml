@@ -112,6 +112,16 @@ tasks:
         vars:
           CMD: "test {{.TEST_ARGS}}"
 
+  bench:
+    internal: true
+    silent: true
+    vars:
+      BENCH_ARGS: '{{.BENCH_ARGS | default ""}}'
+    cmds:
+      - task: _cargo/tool
+        vars:
+          CMD: "bench {{.BENCH_ARGS}}"
+
   audit:
     internal: true
     silent: true
@@ -135,10 +145,8 @@ tasks:
   docs:
     internal: true
     silent: true
-    requires:
-      vars: [ CRATE ]
     vars:
-      MANIFEST_PATH: '{{.MANIFEST_PATH | default (printf "crates/%s/Cargo.toml" .CRATE)}}'
+      MANIFEST_PATH: '{{if .MANIFEST_PATH}}{{.MANIFEST_PATH}}{{else if .CRATE}}crates/{{.CRATE}}/Cargo.toml{{else}}Cargo.toml{{end}}'
       DOCS_ARGS: '{{.DOCS_ARGS | default "--all-features"}}'
     cmds:
       - task: _cargo/tool
