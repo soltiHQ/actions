@@ -1,0 +1,97 @@
+version: '3'
+
+vars:
+  git_root:
+    sh: git rev-parse --show-toplevel
+
+  cache_dir: '{{.cache_dir | default ".cache"}}'
+  image_patch: '{{.image_patch | default ""}}'
+  buf_version: '{{.buf_version | default "1.50.0"}}'
+  default_branch: '{{.default_branch | default "main"}}'
+
+tasks:
+  _docker/run:
+    internal: true
+    silent: true
+    requires:
+      vars: [ IMAGE, CMD, MOUNT_DIR ]
+    cmd: |
+      set -euo pipefail
+
+      if ! docker image inspect "{{.IMAGE}}" >/dev/null 2>&1; then
+        echo "pulling: {{.IMAGE}}"
+        docker pull -q "{{.IMAGE}}" >/dev/null 2>&1 || {
+          echo "Failed to pull image: {{.IMAGE}}"
+          exit 1
+        }
+      fi
+      docker run --rm --init --pull=never \
+        --security-opt no-new-privileges \
+        --user $(id -u):$(id -g) \
+        --cap-drop=ALL \
+        \
+        --volume "{{.git_root}}/{{.MOUNT_DIR}}:/workspace:rw" \
+        {{if .VOLUMES}}{{range $vol := .VOLUMES}}--volume {{$vol}} {{end}}{{end}} \
+        {{if .ENVS}}{{range $env := .ENVS}}--env "{{$env}}" {{end}}{{end}} \
+        \
+        --workdir /workspace \
+        {{.IMAGE}} \
+        {{.CMD}}
+
+  _buf/tool:
+    internal: true
+    silent: true
+    requires:
+      vars: [ CMD ]
+    cmds:
+      - task: _docker/run
+        vars:
+          IMAGE: "ghcr.io/soltihq/buf-ci:{{.buf_version}}{{.image_patch}}"
+          CMD: "{{.CMD}}"
+          MOUNT_DIR: "."
+          ENVS:
+            - "HOME=/tmp"
+
+  lint:
+    internal: true
+    silent: true
+    cmds:
+      - task: _buf/tool
+        vars:
+          CMD: "buf lint"
+
+  build:
+    internal: true
+    silent: true
+    cmds:
+      - task: _buf/tool
+        vars:
+          CMD: "buf build"
+
+  format:
+    internal: true
+    silent: true
+    cmds:
+      - task: _buf/tool
+        vars:
+          CMD: "buf format --diff --exit-code"
+
+  breaking:
+    internal: true
+    silent: true
+    vars:
+      AGAINST: '{{.AGAINST | default (printf ".git#branch=%s" .default_branch)}}'
+    cmds:
+      - task: _buf/tool
+        vars:
+          CMD: >-
+            sh -c 'git config --global --add safe.directory /workspace &&
+            buf breaking --against "{{.AGAINST}}"'
+
+  format/fix:
+    desc: Run 'buf format -w' (auto-format protos).
+    silent: true
+    cmds:
+      - task: _buf/tool
+        vars:
+          CMD: "buf format -w"
