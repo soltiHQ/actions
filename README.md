@@ -107,16 +107,16 @@ task ci:go/lint
 
 ### Taskfile module
 
-`taskfiles/proto/Taskfile.yml`: Protobuf CI tasks running `buf` inside a sandboxed Docker image (`ghcr.io/soltihq/buf-ci`). 
+`taskfiles/proto/Taskfile.yml`: Protobuf CI tasks running `buf` and `clang-format` inside a sandboxed Docker image (`ghcr.io/soltihq/buf-ci`). 
 Code generation is intentionally left to consumers; this module only validates the schema.
 
 | Task          | Command                                                   |
 |---------------|-----------------------------------------------------------|
 | `lint`        | `buf lint`                                                |
 | `build`       | `buf build` (compile the schema)                          |
-| `format`      | `buf format --diff --exit-code` (check)                   |
+| `format`      | `clang-format --dry-run --Werror` over `*.proto` (check)  |
 | `breaking`    | `buf breaking --against <main>` (override with `AGAINST`) |
-| `format/fix`  | `buf format -w` — manual                                  |
+| `format/fix`  | `clang-format -i` over `*.proto` — manual                 |
 
 The image version is pinned with `buf_version` (there is no manifest like `Cargo.toml`/`go.mod` to read it from); 
 `breaking` compares against `main` by default.

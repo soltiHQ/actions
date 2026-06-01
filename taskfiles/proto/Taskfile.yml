@@ -74,7 +74,8 @@ tasks:
     cmds:
       - task: _buf/tool
         vars:
-          CMD: "buf format --diff --exit-code"
+          CMD: >-
+            sh -c 'find . -name "*.proto" -print0 | xargs -0 -r clang-format --dry-run --Werror'
 
   breaking:
     internal: true
@@ -89,9 +90,10 @@ tasks:
             buf breaking --against "{{.AGAINST}}"'
 
   format/fix:
-    desc: Run 'buf format -w' (auto-format protos).
+    desc: Run 'clang-format -i' (auto-format protos).
     silent: true
     cmds:
       - task: _buf/tool
         vars:
-          CMD: "buf format -w"
+          CMD: >-
+            sh -c 'find . -name "*.proto" -print0 | xargs -0 -r clang-format -i'
