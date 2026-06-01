@@ -12,3 +12,29 @@ tasks:
           mkdir -p "$(dirname "{{.TO}}")"
           curl -fsSL -o "{{.TO}}" "{{.URL}}"
         fi
+
+  proto/vendor:
+    internal: true
+    silent: true
+    requires:
+      vars: [ MAPPINGS ]
+    vars:
+      proto_repo: '{{.proto_repo | default "https://github.com/soltiHQ/proto.git"}}'
+      proto_ref: '{{.proto_ref | default "main"}}'
+    cmds:
+      - |
+        set -euo pipefail
+        tmp="$(mktemp -d)"
+        trap 'rm -rf "$tmp"' EXIT
+
+        git clone --quiet "{{.proto_repo}}" "$tmp"
+        git -C "$tmp" checkout --quiet "{{.proto_ref}}"
+
+        printf '%s\n' '{{.MAPPINGS}}' | while read -r src dst; do
+          [ -z "$src" ] && continue
+          rm -rf "$dst"
+          mkdir -p "$dst"
+          cp -R "$tmp/$src/." "$dst/"
+          echo "vendored $src -> $dst"
+        done
+        echo "vendored proto from {{.proto_ref}}"
