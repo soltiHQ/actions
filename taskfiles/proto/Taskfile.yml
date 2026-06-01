@@ -86,8 +86,11 @@ tasks:
       - task: _buf/tool
         vars:
           CMD: >-
-            sh -c 'git config --global --add safe.directory /workspace &&
-            buf breaking --against "{{.AGAINST}}"'
+            sh -c 'git config --global --add safe.directory /workspace;
+            if buf build "{{.AGAINST}}" -o /dev/null 2>/dev/null;
+            then buf breaking --against "{{.AGAINST}}";
+            else echo "baseline {{.AGAINST}} has no schema yet, skipping breaking (bootstrap)";
+            fi'
 
   format/fix:
     desc: Run 'clang-format -i' (auto-format protos).

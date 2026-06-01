@@ -16,6 +16,10 @@ inputs:
     description: Pass '--all-features' to cargo publish.
     required: false
     default: "true"
+  allow-dirty:
+    description: Pass '--allow-dirty' (for crates that vendor gitignored inputs at build time).
+    required: false
+    default: "false"
   max-attempts:
     description: Maximum attempts on HTTP 429 (per crate).
     required: false
@@ -33,6 +37,7 @@ runs:
         CRATES: ${{ inputs.crates }}
         CARGO_REGISTRY_TOKEN: ${{ inputs.token }}
         ALL_FEATURES: ${{ inputs.all-features }}
+        ALLOW_DIRTY: ${{ inputs.allow-dirty }}
         MAX_ATTEMPTS: ${{ inputs.max-attempts }}
         BACKOFF_SECONDS: ${{ inputs.backoff-seconds }}
       run: |
@@ -41,6 +46,9 @@ runs:
         base_args=(publish)
         if [ "$ALL_FEATURES" = "true" ]; then
           base_args+=(--all-features)
+        fi
+        if [ "$ALLOW_DIRTY" = "true" ]; then
+          base_args+=(--allow-dirty)
         fi
 
         publish_one() {
