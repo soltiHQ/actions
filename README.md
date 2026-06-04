@@ -19,8 +19,6 @@ All modules are referenced by `@main`.
 |--------------|----------------------------------------------------------------------|
 | `taskfile`   | Install Taskfile, export env vars, run a `task <cmd>`                |
 | `ghcr-build` | Set up buildx, log in to GHCR, then run a `task <cmd>`               |
-| `cache-get`  | Restore a cache by `paths` + `key` (wraps `actions/cache/restore`)   |
-| `cache-put`  | Save a cache by `paths` + `key` (wraps `actions/cache/save`)         |
 
 ---
 
