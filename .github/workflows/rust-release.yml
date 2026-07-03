@@ -1,0 +1,106 @@
+name: Rust release
+
+on:
+  workflow_call:
+    inputs:
+      crate:
+        description: Crate name to publish (single-crate repositories).
+        type: string
+        required: true
+    secrets:
+      crates-io-token:
+        description: crates.io registry token.
+        required: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Ensure main is fetched
+        run: git fetch origin main --depth=1
+
+      - name: Verify tag commit is on main
+        shell: bash
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+
+          TAG_COMMIT=$(git rev-list -n 1 "$REF")
+          git rev-parse --verify origin/main >/dev/null
+
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+            echo "::error::Tag commit is not an ancestor of origin/main"
+            exit 1
+          fi
+
+      - name: Verify Cargo.toml version matches tag
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          TAG_VERSION="${REF_NAME#v}"
+          FILE_VERSION=$(sed -n '/^\[package\]/,/^\[/p' Cargo.toml \
+            | grep -m1 -E '^\s*version\s*=' \
+            | sed -E 's/.*"([^"]+)".*/\1/')
+
+          if [ -z "$FILE_VERSION" ] || [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::package.version ($FILE_VERSION) must equal tag ($TAG_VERSION, from '$REF_NAME')"
+            exit 1
+          fi
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish to crates.io
+        uses: soltiHQ/actions/cargo-publish@v1
+        with:
+          crates: ${{ inputs.crate }}
+          token: ${{ secrets.crates-io-token }}
+
+  gh-release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Build crate/docs links
+        id: body
+        shell: bash
+        env:
+          CRATE: ${{ inputs.crate }}
+        run: |
+          set -euo pipefail
+          {
+            echo "body<<EOF"
+            echo "### Crate"
+            echo "- https://crates.io/crates/$CRATE"
+            echo
+            echo "### Docs"
+            echo "- https://docs.rs/$CRATE"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: ${{ steps.body.outputs.body }}

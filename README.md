@@ -1,13 +1,38 @@
 [![Apache 2.0](https://img.shields.io/badge/license-Apache2.0-orange.svg)](./LICENSE)
 
-# Re-usable GitHub Actions and Taskfiles
+# Re-usable GitHub Actions, Workflows, and Taskfiles
 
 Shared CI/CD infrastructure for solti projects.
 
-- **Actions** — composite GitHub actions, consumed from workflows via `uses:`.
+- **Workflows** — reusable workflows in `.github/workflows/`, called via `uses:` from repo workflows.
+- **Actions** — composite GitHub actions, consumed from workflow steps via `uses:`.
 - **Taskfiles** — [Taskfile](https://taskfile.dev/) modules pulled in as remote includes (requires Taskfile **v3.41+**).
 
-All modules are referenced by `@main`.
+Workflows and actions are referenced by the `v1` tag. Move the tag to release changes.
+
+---
+
+## Reusable workflows
+
+| Workflow           | Purpose                                                                              |
+|--------------------|---------------------------------------------------------------------------------------|
+| `rust-ci.yml`      | Full Rust CI: fmt, check, unit + integration tests, clippy feature matrix, audit, docs, example builds, publish dry-run, `gate` aggregator |
+| `rust-release.yml` | Rust CD for single-crate repos: verify tag-on-main + version==tag, publish, GitHub release |
+| `label-check.yml`  | Verify the PR carries one changelog label from the caller's `.github/release.yml`    |
+
+`rust-ci.yml` inputs: `preflight-required` (default `true`; set `false` in workspaces — the publish dry-run legitimately fails on cross-crate version bumps).
+`rust-release.yml` inputs: `crate`; secrets: `crates-io-token`.
+
+Usage (repo `pr.yml`):
+
+```yaml
+jobs:
+  ci:
+    uses: soltiHQ/actions/.github/workflows/rust-ci.yml@v1
+    with: { preflight-required: true }
+```
+
+The branch-protection check to require is `ci / gate` (plus `label-check / required` from `label-check.yml`).
 
 ---
 
@@ -15,10 +40,11 @@ All modules are referenced by `@main`.
 
 ### Actions
 
-| Name         | Purpose                                                              |
-|--------------|----------------------------------------------------------------------|
-| `taskfile`   | Install Taskfile, export env vars, run a `task <cmd>`                |
-| `ghcr-build` | Set up buildx, log in to GHCR, then run a `task <cmd>`               |
+| Name         | Purpose                                                                        |
+|--------------|--------------------------------------------------------------------------------|
+| `taskfile`   | Install Taskfile, export env vars, run a `task <cmd>`                          |
+| `ghcr-build` | Set up buildx, log in to GHCR, then run a `task <cmd>`                         |
+| `gate`       | Aggregator: fail unless every job in `toJSON(needs)` succeeded (`allow`, `allow-skipped` escape hatches) |
 
 ---
 
@@ -28,24 +54,29 @@ All modules are referenced by `@main`.
 
 | Name            | Purpose                                                                                      |
 |-----------------|----------------------------------------------------------------------------------------------|
-| `cargo-publish` | Publish a crate to crates.io. Soft-exit on `already exists`, retry on HTTP 429 rate-limit.   |
+| `cargo-publish` | Publish crates to crates.io in order. Soft-exit on `already exists`, retry on HTTP 429.      |
+| `cargo-cache`   | Cache `.cache/cargo` and `.cache/target`, keyed by `Cargo.toml` + `rust-toolchain.toml`      |
 
 ### Taskfile module
 
-`taskfiles/cargo/Taskfile.yml`: Rust CI tasks running inside a sandboxed Docker image.
+`taskfiles/rust/Taskfile.yml`: Rust CI tasks running inside a sandboxed Docker image
+(`ghcr.io/soltihq/rust-ci:<rust-version>`, toolchain pinned to the caller's `rust-version`).
 
-| Task                    | Command                                                         |
-|-------------------------|-----------------------------------------------------------------|
-| `cargo/fmt`             | `cargo fmt --check --verbose`                                   |
-| `cargo/check`           | `cargo check`                                                   |
-| `cargo/clippy`          | `cargo clippy --all --all-features -- -D warnings`              |
-| `cargo/test`            | `cargo test --all --all-features`                               |
-| `cargo/audit`           | `cargo audit`                                                   |
-| `cargo/publish-dry-run` | `cargo publish --dry-run -p <CRATE>` (requires `CRATE`)         |
-| `cargo/docs`            | `rustdoc` in docs.rs emulation mode (nightly, requires `CRATE`) |
-| `cargo/audit/fix`       | `cargo audit fix` — manual                                      |
+| Task              | Command                                                  |
+|-------------------|-----------------------------------------------------------|
+| `fmt`             | `cargo fmt --check --verbose`                             |
+| `check`           | `cargo check`                                             |
+| `build`           | `cargo build -p <CRATE>` (requires `CRATE`)               |
+| `clippy`          | `cargo clippy --all --all-features -- -D warnings`        |
+| `test`            | `cargo test --all --all-features`                         |
+| `bench`           | `cargo bench`                                             |
+| `audit`           | `cargo audit`                                             |
+| `publish-dry-run` | `cargo publish --dry-run -p <CRATE>` (requires `CRATE`)   |
+| `docs`            | `rustdoc` in docs.rs emulation mode (nightly)             |
+| `fmt/fix`         | `cargo fmt` — manual                                      |
+| `audit/fix`       | `cargo audit fix` — manual                                |
 
-Defaults for arg-like variables (`FMT_ARGS`, `CHECK_ARGS`, `CLIPPY_ARGS`, `TEST_ARGS`, `PUBLISH_ARGS`) can be overridden per call.
+Defaults for arg-like variables (`FMT_ARGS`, `CHECK_ARGS`, `CLIPPY_ARGS`, `TEST_ARGS`) can be overridden per call.
 
 #### Usage
 
@@ -53,17 +84,17 @@ Defaults for arg-like variables (`FMT_ARGS`, `CHECK_ARGS`, `CLIPPY_ARGS`, `TEST_
 # Taskfile.yml
 version: '3'
 includes:
-  ci:
-    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/main/taskfiles/cargo/Taskfile.yml
+  rust:
+    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/main/taskfiles/rust/Taskfile.yml
     vars:
-      rust_version: "1.90.0"
+      image_patch: "-1"
 ```
 
 ```shell
-task ci:cargo/fmt
-task ci:cargo/clippy
-task ci:cargo/test
-task ci:cargo/publish-dry-run CRATE=my-crate
+task rust:fmt
+task rust:clippy
+task rust:test
+task rust:publish-dry-run CRATE=my-crate
 ```
 
 ---

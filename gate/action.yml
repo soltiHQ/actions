@@ -1,0 +1,43 @@
+name: Gate
+description: Fail unless every job in the needs JSON ended in success.
+
+inputs:
+  results:
+    description: Pass `toJSON(needs)` from the calling aggregator job.
+    required: true
+  allow:
+    description: Space-separated job names where any result is tolerated.
+    required: false
+    default: ""
+  allow-skipped:
+    description: Space-separated job names where "skipped" is tolerated (but failure is not).
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Verify results
+      shell: bash
+      env:
+        RESULTS: ${{ inputs.results }}
+        ALLOW: ${{ inputs.allow }}
+        ALLOW_SKIPPED: ${{ inputs.allow-skipped }}
+      run: |
+        set -euo pipefail
+        echo "$RESULTS" | jq .
+
+        bad=$(echo "$RESULTS" | jq -r --arg allow "$ALLOW" --arg allowskip "$ALLOW_SKIPPED" '
+          ($allow | split(" ") | map(select(length > 0))) as $any
+          | ($allowskip | split(" ") | map(select(length > 0))) as $skip
+          | to_entries[]
+          | select(.value.result != "success")
+          | select((.key as $k | $any | index($k)) == null)
+          | select(((.key as $k | $skip | index($k)) != null and .value.result == "skipped") | not)
+          | .key')
+
+        if [ -n "$bad" ]; then
+          echo "::error::Jobs not successful: $bad"
+          exit 1
+        fi
+        echo "Gate passed."
