@@ -7,7 +7,7 @@ vars:
     sh: grep '^go ' {{.git_root}}/go.mod | awk '{print $2}'
 
   cache_dir: '{{.cache_dir | default ".cache"}}'
-  image_patch: '{{.image_patch | default ""}}'
+  image: 'ghcr.io/soltihq/ci/golang:{{.go_version}}'
 
 tasks:
   _docker/run:
@@ -18,7 +18,7 @@ tasks:
     cmd: |
       set -euo pipefail
 
-      if ! docker image inspect "{{.IMAGE}}" >/dev/null 2>&1; then
+      if [ -n "${CI:-}" ] || ! docker image inspect "{{.IMAGE}}" >/dev/null 2>&1; then
         echo "pulling: {{.IMAGE}}"
         docker pull -q "{{.IMAGE}}" >/dev/null 2>&1 || {
           echo "Failed to pull image: {{.IMAGE}}"
@@ -47,7 +47,7 @@ tasks:
       - cmd: mkdir -p "{{.git_root}}/{{.cache_dir}}"
       - task: _docker/run
         vars:
-          IMAGE: "ghcr.io/soltihq/golang-ci:{{.go_version}}{{.image_patch}}"
+          IMAGE: "{{.image}}"
           CMD: "{{.CMD}}"
           MOUNT_DIR: "."
           VOLUMES:
@@ -155,6 +155,11 @@ tasks:
       - task: _go/tool
         vars:
           CMD: "tailwindcss -c {{.CONFIG}} -i {{.INPUT}} -o {{.OUTPUT}} {{.TAILWIND_ARGS}}"
+
+  image/pull:
+    desc: Refresh the Go CI image.
+    silent: true
+    cmd: docker pull -q "{{.image}}"
 
   tidy:
     desc: Run 'go mod tidy'.

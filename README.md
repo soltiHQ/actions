@@ -69,7 +69,7 @@ The branch-protection check to require is `ci / gate` (plus `label-check / requi
 | Name         | Purpose                                                                        |
 |--------------|--------------------------------------------------------------------------------|
 | `taskfile`   | Install Taskfile, export env vars, run a `task <cmd>`                          |
-| `ghcr-build` | Set up buildx, log in to GHCR, then run a `task <cmd>`                         |
+| `ghcr-build` | Build a multi-platform Docker context and publish mutable and commit tags       |
 | `gate`       | Aggregator: fail unless every job in `toJSON(needs)` succeeded (`allow`, `allow-skipped` escape hatches) |
 
 ---
@@ -86,7 +86,7 @@ The branch-protection check to require is `ci / gate` (plus `label-check / requi
 ### Taskfile module
 
 `taskfiles/rust/Taskfile.yml`: Rust CI tasks running inside a sandboxed Docker image
-(`ghcr.io/soltihq/rust-ci:<rust-version>`, toolchain pinned to the caller's `rust-version`).
+(`ghcr.io/soltihq/ci/rust:<rust-version>`, toolchain pinned to the caller's `rust-version`).
 
 | Task              | Command                                                  |
 |-------------------|-----------------------------------------------------------|
@@ -101,6 +101,7 @@ The branch-protection check to require is `ci / gate` (plus `label-check / requi
 | `publish-dry-run` | `cargo publish --dry-run -p <CRATE>` (requires `CRATE`)   |
 | `doc`             | `cargo doc` with warnings denied                           |
 | `docs`            | `rustdoc` in docs.rs emulation mode (nightly)             |
+| `image/pull`      | Refresh the pinned Rust CI image                           |
 | `fmt/fix`         | `cargo fmt` — manual                                      |
 | `audit/fix`       | `cargo audit fix` — manual                                |
 
@@ -114,8 +115,6 @@ version: '3'
 includes:
   rust:
     taskfile: https://raw.githubusercontent.com/soltiHQ/actions/v1/taskfiles/rust/Taskfile.yml
-    vars:
-      image_patch: "-2"
 ```
 
 ```shell
@@ -123,6 +122,7 @@ task rust:fmt
 task rust:clippy
 task rust:test
 task rust:publish-dry-run CRATE=my-crate
+task rust:image/pull
 ```
 
 ---
@@ -131,7 +131,8 @@ task rust:publish-dry-run CRATE=my-crate
 
 ### Taskfile module
 
-`taskfiles/go/Taskfile.yml`: Go CI tasks running inside a sandboxed Docker image.
+`taskfiles/go/Taskfile.yml`: Go CI tasks running inside a sandboxed Docker image
+(`ghcr.io/soltihq/ci/golang:<go-version>`, toolchain pinned to the caller's `go` directive).
 
 | Task               | Command                                   |
 |--------------------|-------------------------------------------|
@@ -140,6 +141,7 @@ task rust:publish-dry-run CRATE=my-crate
 | `go/fumpt`         | `gofumpt -l -w` over all tracked `.go`    |
 | `go/vulnerability` | `govulncheck ./...`                       |
 | `go/mod/tidy`      | `go mod tidy`                             |
+| `image/pull`       | Refresh the pinned Go CI image            |
 
 #### Usage
 
@@ -156,6 +158,7 @@ includes:
 ```shell
 task ci:go/test
 task ci:go/lint
+task ci:image/pull
 ```
 
 ---
@@ -164,7 +167,7 @@ task ci:go/lint
 
 ### Taskfile module
 
-`taskfiles/proto/Taskfile.yml`: Protobuf CI tasks running `buf` and `clang-format` inside a sandboxed Docker image (`ghcr.io/soltihq/buf-ci`). 
+`taskfiles/proto/Taskfile.yml`: Protobuf CI tasks running `buf` and `clang-format` inside a sandboxed Docker image (`ghcr.io/soltihq/ci/proto`).
 Code generation is intentionally left to consumers; this module only validates the schema.
 
 | Task          | Command                                                   |
@@ -173,6 +176,7 @@ Code generation is intentionally left to consumers; this module only validates t
 | `build`       | `buf build` (compile the schema)                          |
 | `format`      | `clang-format --dry-run --Werror` over `*.proto` (check)  |
 | `breaking`    | `buf breaking --against <main>` (override with `AGAINST`) |
+| `image/pull`  | Refresh the pinned Proto CI image                         |
 | `format/fix`  | `clang-format -i` over `*.proto` — manual                 |
 
 The image version is pinned with `buf_version` (there is no manifest like `Cargo.toml`/`go.mod` to read it from); 
@@ -188,14 +192,17 @@ includes:
     taskfile: https://raw.githubusercontent.com/soltiHQ/actions/main/taskfiles/proto/Taskfile.yml
     vars:
       buf_version: "1.50.0"
-      image_patch: "-1"
 ```
 
 ```shell
 task proto:lint
 task proto:breaking
 task proto:breaking AGAINST=https://github.com/soltiHQ/proto.git#branch=main
+task proto:image/pull
 ```
+
+When `CI` is set, each Taskfile module refreshes its selected image before a task.
+When `CI` is unset, each module reuses its selected image if it is already present.
 
 ---
 

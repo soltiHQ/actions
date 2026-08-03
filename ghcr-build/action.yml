@@ -1,5 +1,5 @@
 name: GHCR Build
-description: Build and Push docker image.
+description: Build and push a multi-platform image to GHCR.
 
 inputs:
   docker_username:
@@ -9,11 +9,22 @@ inputs:
     description: 'Docker auth password'
     required: true
   image:
-    description: 'Image name / Taskfile command'
+    description: 'Image path inside the registry'
     required: true
-  version:
-    description: 'Image version'
+  tag:
+    description: 'Mutable contract tag'
     required: true
+  context:
+    description: 'Docker build context'
+    required: true
+  build_args:
+    description: 'Newline-separated Docker build arguments'
+    required: false
+    default: ''
+  platforms:
+    description: 'Comma-separated target platforms'
+    required: false
+    default: 'linux/amd64,linux/arm64'
 
 runs:
   using: "composite"
@@ -35,11 +46,28 @@ runs:
 
     - name: Set up Buildx
       uses: docker/setup-buildx-action@v4
-      with:
-        install: true
 
-    - name: Invoke Taskfile
-      uses: soltiHQ/actions/taskfile@main
+    - name: Prepare image metadata
+      id: metadata
+      shell: bash
+      run: echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+    - name: Build and push image
+      uses: docker/build-push-action@v7
       with:
-        command: ${{ inputs.image }}
-        vars: VERSION=${{ inputs.version }}
+        context: ${{ inputs.context }}
+        file: ${{ inputs.context }}/Dockerfile
+        platforms: ${{ inputs.platforms }}
+        push: true
+        tags: |
+          ghcr.io/soltihq/${{ inputs.image }}:${{ inputs.tag }}
+          ghcr.io/soltihq/${{ inputs.image }}:${{ inputs.tag }}-sha-${{ github.sha }}
+        build-args: ${{ inputs.build_args }}
+        labels: |
+          org.opencontainers.image.authors=SoltiHQ
+          org.opencontainers.image.vendor=Solti
+          org.opencontainers.image.created=${{ steps.metadata.outputs.created }}
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.title=${{ inputs.image }}
+          org.opencontainers.image.version=${{ inputs.tag }}

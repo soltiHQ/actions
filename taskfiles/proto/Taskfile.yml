@@ -5,9 +5,9 @@ vars:
     sh: git rev-parse --show-toplevel
 
   cache_dir: '{{.cache_dir | default ".cache"}}'
-  image_patch: '{{.image_patch | default ""}}'
   buf_version: '{{.buf_version | default "1.50.0"}}'
   default_branch: '{{.default_branch | default "main"}}'
+  image: 'ghcr.io/soltihq/ci/proto:{{.buf_version}}'
 
 tasks:
   _docker/run:
@@ -18,7 +18,7 @@ tasks:
     cmd: |
       set -euo pipefail
 
-      if ! docker image inspect "{{.IMAGE}}" >/dev/null 2>&1; then
+      if [ -n "${CI:-}" ] || ! docker image inspect "{{.IMAGE}}" >/dev/null 2>&1; then
         echo "pulling: {{.IMAGE}}"
         docker pull -q "{{.IMAGE}}" >/dev/null 2>&1 || {
           echo "Failed to pull image: {{.IMAGE}}"
@@ -46,7 +46,7 @@ tasks:
     cmds:
       - task: _docker/run
         vars:
-          IMAGE: "ghcr.io/soltihq/buf-ci:{{.buf_version}}{{.image_patch}}"
+          IMAGE: "{{.image}}"
           CMD: "{{.CMD}}"
           MOUNT_DIR: "."
           ENVS:
@@ -91,6 +91,11 @@ tasks:
             then buf breaking --against "{{.AGAINST}}";
             else echo "baseline {{.AGAINST}} has no schema yet, skipping breaking (bootstrap)";
             fi'
+
+  image/pull:
+    desc: Refresh the Proto CI image.
+    silent: true
+    cmd: docker pull -q "{{.image}}"
 
   format/fix:
     desc: Run 'clang-format -i' (auto-format protos).

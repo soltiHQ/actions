@@ -7,7 +7,7 @@ vars:
     sh: grep -E '^rust-version[[:space:]]*=' {{.git_root}}/Cargo.toml | head -1 | awk -F'"' '{print $2}'
 
   cache_dir: '{{.cache_dir | default ".cache"}}'
-  image_patch: '{{.image_patch | default ""}}'
+  image: 'ghcr.io/soltihq/ci/rust:{{.rust_version}}'
 
 tasks:
   _docker/run:
@@ -18,7 +18,7 @@ tasks:
     cmd: |
       set -euo pipefail
 
-      if ! docker image inspect "{{.IMAGE}}" >/dev/null 2>&1; then
+      if [ -n "${CI:-}" ] || ! docker image inspect "{{.IMAGE}}" >/dev/null 2>&1; then
         echo "pulling: {{.IMAGE}}"
         docker pull -q "{{.IMAGE}}" >/dev/null 2>&1 || {
           echo "Failed to pull image: {{.IMAGE}}"
@@ -50,7 +50,7 @@ tasks:
       - cmd: mkdir -p "{{.git_root}}/{{.cache_dir}}"
       - task: _docker/run
         vars:
-          IMAGE: "ghcr.io/soltihq/rust-ci:{{.rust_version}}{{.image_patch}}"
+          IMAGE: "{{.image}}"
           CMD: "{{.CMD}}"
           MOUNT_DIR: "."
           VOLUMES:
@@ -183,6 +183,11 @@ tasks:
             +nightly rustdoc --lib --manifest-path {{.MANIFEST_PATH}} {{.DOCS_ARGS}}
             -Zrustdoc-map -Zunstable-options -Zrustdoc-scrape-examples
             --config 'build.rustdocflags=["--cfg","docsrs","-Z","unstable-options","--cap-lints","warn"]'
+
+  image/pull:
+    desc: Refresh the Rust CI image.
+    silent: true
+    cmd: docker pull -q "{{.image}}"
 
   fmt/fix:
     desc: Run 'cargo fmt' (auto-format).
