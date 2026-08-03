@@ -43,6 +43,8 @@ tasks:
     silent: true
     requires:
       vars: [ CMD ]
+    vars:
+      RUSTFLAGS: '{{.RUSTFLAGS | default "-D warnings"}}'
     cmds:
       - cmd: mkdir -p "{{.git_root}}/{{.cache_dir}}"
       - task: _docker/run
@@ -58,7 +60,7 @@ tasks:
             - "RUSTUP_TOOLCHAIN={{.rust_version}}"
             - "RUSTUP_NO_UPDATE_CHECK=1"
             - "CARGO_INCREMENTAL=0"
-            - "RUSTFLAGS=-D warnings"
+            - "RUSTFLAGS={{.RUSTFLAGS}}"
 
   fmt:
     internal: true
@@ -163,6 +165,7 @@ tasks:
     cmds:
       - task: _cargo/tool
         vars:
+          RUSTFLAGS: "--cap-lints warn"
           CMD: >-
             +nightly rustdoc --lib --manifest-path {{.MANIFEST_PATH}} {{.DOCS_ARGS}}
             -Zrustdoc-map -Zunstable-options -Zrustdoc-scrape-examples

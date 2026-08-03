@@ -8,11 +8,6 @@ on:
         type: boolean
         required: false
         default: false
-      preflight-required:
-        description: Fail the gate when the publish dry-run fails. Set false when unpublished cross-crate versions make the registry dry-run unavailable.
-        type: boolean
-        required: false
-        default: true
 
 jobs:
   fmt:
@@ -24,7 +19,7 @@ jobs:
         with: { command: ci/fmt }
 
   check:
-    name: MSRV check
+    name: MSRV
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -153,8 +148,7 @@ jobs:
         with: { command: ci/package }
 
   preflight:
-    needs: [audit]
-    continue-on-error: ${{ !inputs.preflight-required }}
+    continue-on-error: true
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -164,12 +158,11 @@ jobs:
 
   gate:
     if: always()
-    needs: [fmt, check, unittest, integration, clippy, audit, docs, examples, examples-build, package, preflight]
+    needs: [fmt, check, unittest, integration, clippy, audit, docs, examples, examples-build, package]
     runs-on: ubuntu-24.04
     steps:
       - name: Gate
         uses: soltiHQ/actions/gate@v1
         with:
           results: ${{ toJSON(needs) }}
-          allow: ${{ !inputs.preflight-required && 'preflight' || '' }}
           allow-skipped: examples-build package

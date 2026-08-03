@@ -16,12 +16,12 @@ Workflows and actions are referenced by the `v1` tag. Move the tag to release ch
 
 | Workflow           | Purpose                                                                              |
 |--------------------|---------------------------------------------------------------------------------------|
-| `rust-ci.yml`                | Full Rust CI for a package or workspace: fmt, MSRV check, tests, clippy, audit, docs, examples, package checks, publish dry-run, and gate |
+| `rust-ci.yml`                | Full Rust CI for a package or workspace: fmt, MSRV, tests, clippy, audit, docs, examples, package checks, advisory publish dry-run, and gate |
 | `rust-release.yml`           | Rust CD for single-crate repositories |
 | `rust-workspace-release.yml` | Ordered Rust workspace publication followed by one GitHub release |
 | `label-check.yml`  | Verify the PR carries one changelog label from the caller's `.github/release.yml`    |
 
-`rust-ci.yml` inputs: `workspace` (default `false`) and `preflight-required` (default `true`; set `false` when unpublished cross-crate versions make the registry dry-run unavailable).
+`rust-ci.yml` input: `workspace` (default `false`).
 `rust-release.yml` inputs: `crate`; secrets: `crates-io-token`.
 `rust-workspace-release.yml` inputs: `crates-file`, `default-branch`, `prepare-task`, and `allow-dirty`; secrets: `crates-io-token`.
 
@@ -31,7 +31,6 @@ Usage (repo `pr.yml`):
 jobs:
   ci:
     uses: soltiHQ/actions/.github/workflows/rust-ci.yml@v1
-    with: { preflight-required: true }
 ```
 
 Workspace CI uses the same workflow:
@@ -42,8 +41,10 @@ jobs:
     uses: soltiHQ/actions/.github/workflows/rust-ci.yml@v1
     with:
       workspace: true
-      preflight-required: false
 ```
+
+The publish dry-run is advisory.
+It has no dependencies and is not part of `gate`.
 
 The branch-protection check to require is `ci / gate` (plus `label-check / required` from `label-check.yml`).
 
@@ -101,7 +102,7 @@ includes:
   rust:
     taskfile: https://raw.githubusercontent.com/soltiHQ/actions/v1/taskfiles/rust/Taskfile.yml
     vars:
-      image_patch: "-1"
+      image_patch: "-2"
 ```
 
 ```shell
