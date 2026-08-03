@@ -99,6 +99,7 @@ The branch-protection check to require is `ci / gate` (plus `label-check / requi
 | `audit`           | `cargo audit`                                             |
 | `package-list`    | `cargo package --list -p <CRATE>` (requires `CRATE`)      |
 | `publish-dry-run` | `cargo publish --dry-run -p <CRATE>` (requires `CRATE`)   |
+| `doc`             | `cargo doc` with warnings denied                           |
 | `docs`            | `rustdoc` in docs.rs emulation mode (nightly)             |
 | `fmt/fix`         | `cargo fmt` — manual                                      |
 | `audit/fix`       | `cargo audit fix` — manual                                |
