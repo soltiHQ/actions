@@ -3,8 +3,13 @@ name: Rust CI
 on:
   workflow_call:
     inputs:
+      workspace:
+        description: Enable workspace-specific clippy and package checks.
+        type: boolean
+        required: false
+        default: false
       preflight-required:
-        description: Fail the gate when the publish dry-run fails. Set false for workspaces (cross-crate version bumps legitimately fail the dry-run until dependencies are published).
+        description: Fail the gate when the publish dry-run fails. Set false when unpublished cross-crate versions make the registry dry-run unavailable.
         type: boolean
         required: false
         default: true
@@ -19,6 +24,7 @@ jobs:
         with: { command: ci/fmt }
 
   check:
+    name: MSRV check
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -54,12 +60,18 @@ jobs:
       - uses: actions/checkout@v6
       - id: set
         shell: bash
+        env:
+          WORKSPACE: ${{ inputs.workspace }}
         run: |
-          feats=$(awk '
-            /^\[features\]/ { f = 1; next }
-            /^\[/           { f = 0 }
-            f && /=/        { if ($1 != "default") print $1 }
-          ' Cargo.toml)
+          if [ "$WORKSPACE" = "true" ]; then
+            feats=""
+          else
+            feats=$(awk '
+              /^\[features\]/ { f = 1; next }
+              /^\[/           { f = 0 }
+              f && /=/        { if ($1 != "default") print $1 }
+            ' Cargo.toml)
+          fi
           matrix=$(printf 'none\n%s\nall\n' "$feats" | jq -Rsc 'split("\n") | map(select(length > 0))')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
@@ -107,7 +119,11 @@ jobs:
       - id: set
         shell: bash
         run: |
-          entries=$(find examples -mindepth 1 -maxdepth 1 -type f -name '*.rs' -exec basename {} .rs \; 2>/dev/null || true)
+          entries=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '
+            .packages[]
+            | select(any(.targets[]; .kind | index("example")))
+            | .name
+          ')
           matrix=$(printf '%s\n' "$entries" | jq -Rsc 'split("\n") | map(select(length > 0))')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
@@ -118,16 +134,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: ${{ fromJSON(needs.examples.outputs.matrix) }}
+        package: ${{ fromJSON(needs.examples.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v6
-      - name: Build example
+      - name: Build package examples
         uses: soltiHQ/actions/taskfile@v1
         with:
-          command: ci/build CRATE=${{ matrix.example }}
+          command: ci/build CRATE=${{ matrix.package }}
+
+  package:
+    if: inputs.workspace
+    needs: [audit]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check workspace package file sets
+        uses: soltiHQ/actions/taskfile@v1
+        with: { command: ci/package }
 
   preflight:
     needs: [audit]
+    continue-on-error: ${{ !inputs.preflight-required }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -137,7 +164,7 @@ jobs:
 
   gate:
     if: always()
-    needs: [fmt, check, unittest, integration, clippy, audit, docs, examples, examples-build, preflight]
+    needs: [fmt, check, unittest, integration, clippy, audit, docs, examples, examples-build, package, preflight]
     runs-on: ubuntu-24.04
     steps:
       - name: Gate
@@ -145,4 +172,4 @@ jobs:
         with:
           results: ${{ toJSON(needs) }}
           allow: ${{ !inputs.preflight-required && 'preflight' || '' }}
-          allow-skipped: examples-build
+          allow-skipped: examples-build package

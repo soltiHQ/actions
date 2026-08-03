@@ -16,12 +16,14 @@ Workflows and actions are referenced by the `v1` tag. Move the tag to release ch
 
 | Workflow           | Purpose                                                                              |
 |--------------------|---------------------------------------------------------------------------------------|
-| `rust-ci.yml`      | Full Rust CI: fmt, check, unit + integration tests, clippy feature matrix, audit, docs, example builds, publish dry-run, `gate` aggregator |
-| `rust-release.yml` | Rust CD for single-crate repos: verify tag-on-main + version==tag, publish, GitHub release |
+| `rust-ci.yml`                | Full Rust CI for a package or workspace: fmt, MSRV check, tests, clippy, audit, docs, examples, package checks, publish dry-run, and gate |
+| `rust-release.yml`           | Rust CD for single-crate repositories |
+| `rust-workspace-release.yml` | Ordered Rust workspace publication followed by one GitHub release |
 | `label-check.yml`  | Verify the PR carries one changelog label from the caller's `.github/release.yml`    |
 
-`rust-ci.yml` inputs: `preflight-required` (default `true`; set `false` in workspaces — the publish dry-run legitimately fails on cross-crate version bumps).
+`rust-ci.yml` inputs: `workspace` (default `false`) and `preflight-required` (default `true`; set `false` when unpublished cross-crate versions make the registry dry-run unavailable).
 `rust-release.yml` inputs: `crate`; secrets: `crates-io-token`.
+`rust-workspace-release.yml` inputs: `crates-file`, `default-branch`, `prepare-task`, and `allow-dirty`; secrets: `crates-io-token`.
 
 Usage (repo `pr.yml`):
 
@@ -30,6 +32,17 @@ jobs:
   ci:
     uses: soltiHQ/actions/.github/workflows/rust-ci.yml@v1
     with: { preflight-required: true }
+```
+
+Workspace CI uses the same workflow:
+
+```yaml
+jobs:
+  ci:
+    uses: soltiHQ/actions/.github/workflows/rust-ci.yml@v1
+    with:
+      workspace: true
+      preflight-required: false
 ```
 
 The branch-protection check to require is `ci / gate` (plus `label-check / required` from `label-check.yml`).
@@ -71,6 +84,7 @@ The branch-protection check to require is `ci / gate` (plus `label-check / requi
 | `test`            | `cargo test --all --all-features`                         |
 | `bench`           | `cargo bench`                                             |
 | `audit`           | `cargo audit`                                             |
+| `package-list`    | `cargo package --list -p <CRATE>` (requires `CRATE`)      |
 | `publish-dry-run` | `cargo publish --dry-run -p <CRATE>` (requires `CRATE`)   |
 | `docs`            | `rustdoc` in docs.rs emulation mode (nightly)             |
 | `fmt/fix`         | `cargo fmt` — manual                                      |
@@ -85,7 +99,7 @@ Defaults for arg-like variables (`FMT_ARGS`, `CHECK_ARGS`, `CLIPPY_ARGS`, `TEST_
 version: '3'
 includes:
   rust:
-    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/main/taskfiles/rust/Taskfile.yml
+    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/v1/taskfiles/rust/Taskfile.yml
     vars:
       image_patch: "-1"
 ```
