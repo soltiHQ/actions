@@ -1,39 +1,72 @@
 [![Apache 2.0](https://img.shields.io/badge/license-Apache2.0-orange.svg)](./LICENSE)
 
-# Re-usable GitHub Actions, Workflows, and Taskfiles
+# Solti Actions
 
-Shared CI/CD infrastructure for solti projects.
+Reusable CI/CD workflows, composite actions, and Taskfile modules for Solti repositories.
 
-- **Workflows** — reusable workflows in `.github/workflows/`, called via `uses:` from repo workflows.
-- **Actions** — composite GitHub actions, consumed from workflow steps via `uses:`.
-- **Taskfiles** — [Taskfile](https://taskfile.dev/) modules pulled in as remote includes (requires Taskfile **v3.41+**).
+Consumer repositories keep their project-specific commands and release configuration.
+This repository owns the shared GitHub Actions machinery and toolchain containers.
 
-Workflows and actions are referenced by the `v1` tag. Move the tag to release changes.
+| [Quick start](#quick-start) | [Workflows](#reusable-workflows) | [Actions](#composite-actions) | [Taskfiles](#taskfile-modules) |
 
----
+## Contract
 
-## Reusable workflows
+| Component              | Location             | Used from                                      |
+|------------------------|----------------------|------------------------------------------------|
+| Reusable workflows     | `.github/workflows/` | A caller workflow job through `uses`           |
+| Composite actions      | `<name>/action.yml`  | A workflow step through `uses`                 |
+| Taskfile modules       | `taskfiles/`         | A repository `Taskfile.yml` through `includes` |
 
-| Workflow           | Purpose                                                                              |
-|--------------------|---------------------------------------------------------------------------------------|
-| `rust-ci.yml`                | Full Rust CI for a package or workspace: fmt, MSRV, tests, clippy, audit, docs, examples, package checks, advisory publish dry-run, and gate |
-| `rust-release.yml`           | Rust CD for single-crate repositories |
-| `rust-workspace-release.yml` | Ordered Rust workspace publication followed by one GitHub release |
-| `label-check.yml`  | Verify the PR carries one changelog label from the caller's `.github/release.yml`    |
+Workflows and actions use the `v1` tag.
+Remote Taskfile includes should use the same tag.
 
-`rust-ci.yml` input: `workspace` (default `false`).
-`rust-release.yml` inputs: `crate`; secrets: `crates-io-token`.
-`rust-workspace-release.yml` inputs: `crates-file`, `default-branch`, `prepare-task`, and `allow-dirty`; secrets: `crates-io-token`.
+The Taskfile modules run tools inside versioned images from [`soltiHQ/images`](https://github.com/soltiHQ/images):
 
-Usage (repo `pr.yml`):
+| Module | Image                                 | Version source                        |
+|--------|---------------------------------------|---------------------------------------|
+| Rust   | `ghcr.io/soltihq/ci/rust:<version>`   | Root `Cargo.toml` `rust-version`      |
+| Go     | `ghcr.io/soltihq/ci/golang:<version>` | Root `go.mod` `go` directive          |
+| Proto  | `ghcr.io/soltihq/ci/proto:<version>`  | `buf_version`, defaulting to `1.50.0` |
+
+CI refreshes the selected image before each task.
+Local runs reuse an existing image and pull it when missing.
+
+## Quick start
+
+A Rust repository exposes its own `ci/*` tasks through `Taskfile.yml`:
 
 ```yaml
+version: '3'
+
+includes:
+  rust:
+    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/v1/taskfiles/rust/Taskfile.yml
+
+tasks:
+  ci/fmt:
+    cmds:
+      - task: rust:fmt
+
+  ci/check:
+    cmds:
+      - task: rust:check
+        vars: { CHECK_ARGS: '--all-targets --all-features --locked' }
+```
+
+The pull-request workflow delegates CI to the shared workflow:
+
+```yaml
+name: PR
+
+on:
+  pull_request:
+
 jobs:
   ci:
     uses: soltiHQ/actions/.github/workflows/rust-ci.yml@v1
 ```
 
-Workspace CI uses the same workflow:
+For a Cargo workspace, enable workspace-specific checks:
 
 ```yaml
 jobs:
@@ -43,10 +76,40 @@ jobs:
       workspace: true
 ```
 
-The publish dry-run is advisory.
-It has no dependencies and is not part of `gate`.
+The branch-protection check is `ci / gate` when the caller job is named `ci`.
 
-Workspace repositories can define focused Clippy configurations in Cargo metadata:
+## Reusable workflows
+
+| Workflow                                                                     | Purpose                                                             |
+|------------------------------------------------------------------------------|---------------------------------------------------------------------|
+| [`rust-ci.yml`](.github/workflows/rust-ci.yml)                               | Validate a Rust package or workspace                                |
+| [`rust-release.yml`](.github/workflows/rust-release.yml)                     | Publish one crate and create one GitHub release                     |
+| [`rust-workspace-release.yml`](.github/workflows/rust-workspace-release.yml) | Publish workspace crates in dependency order and create one release |
+| [`label-check.yml`](.github/workflows/label-check.yml)                       | Require a changelog label declared in `.github/release.yml`         |
+
+### Rust CI
+
+`rust-ci.yml` calls the consumer repository's `ci/*` tasks.
+The shared workflow owns job isolation, caching, matrices, and the final gate.
+
+| Job               | Consumer task or behavior                                      |
+|-------------------|----------------------------------------------------------------|
+| `fmt`             | `ci/fmt`                                                       |
+| `MSRV`            | `ci/check`                                                     |
+| `unittest`        | `ci/test-unit`                                                 |
+| `integration`     | `ci/test-integration`                                          |
+| `clippy`          | `ci/clippy FEATURE=<configuration>`                            |
+| `audit`           | `ci/audit`                                                     |
+| `docs`            | `ci/docs`                                                      |
+| `examples-build`  | `ci/build CRATE=<package>` for packages containing examples    |
+| `package`         | `ci/package` when `workspace: true`                            |
+| `preflight`       | Advisory `ci/publish-dry-run`; not included in the final gate  |
+| `gate`            | Require every non-advisory CI dependency to succeed            |
+
+Package repositories test `none`, every declared feature, and `all` in separate Clippy jobs.
+Workspace repositories test `none` and `all` across the workspace.
+
+A workspace can add focused package configurations:
 
 ```toml
 [workspace.metadata.ci]
@@ -55,157 +118,198 @@ clippy-matrix = [
 ]
 ```
 
-Each entry runs with only the listed features enabled.
-The workspace-wide `none` and `all` checks remain active.
+Each entry must name an existing workspace package and existing features.
 
-The branch-protection check to require is `ci / gate` (plus `label-check / required` from `label-check.yml`).
+### Labels
 
----
-
-## Common
-
-### Actions
-
-| Name         | Purpose                                                                        |
-|--------------|--------------------------------------------------------------------------------|
-| `taskfile`   | Install Taskfile, export env vars, run a `task <cmd>`                          |
-| `ghcr-build` | Build a multi-platform Docker context and publish mutable and commit tags       |
-| `gate`       | Aggregator: fail unless every job in `toJSON(needs)` succeeded (`allow`, `allow-skipped` escape hatches) |
-
----
-
-## Rust
-
-### Actions
-
-| Name            | Purpose                                                                                      |
-|-----------------|----------------------------------------------------------------------------------------------|
-| `cargo-publish` | Publish crates to crates.io in order. Soft-exit on `already exists`, retry on HTTP 429.      |
-| `cargo-cache`   | Cache `.cache/cargo` and `.cache/target`, keyed by `Cargo.toml` + `rust-toolchain.toml`      |
-
-### Taskfile module
-
-`taskfiles/rust/Taskfile.yml`: Rust CI tasks running inside a sandboxed Docker image
-(`ghcr.io/soltihq/ci/rust:<rust-version>`, toolchain pinned to the caller's `rust-version`).
-
-| Task              | Command                                                  |
-|-------------------|-----------------------------------------------------------|
-| `fmt`             | `cargo fmt --check --verbose`                             |
-| `check`           | `cargo check`                                             |
-| `build`           | `cargo build -p <CRATE>` (requires `CRATE`)               |
-| `clippy`          | `cargo clippy --all --all-features -- -D warnings`        |
-| `test`            | `cargo test --all --all-features`                         |
-| `bench`           | `cargo bench`                                             |
-| `audit`           | `cargo audit`                                             |
-| `package-list`    | `cargo package --list -p <CRATE>` (requires `CRATE`)      |
-| `publish-dry-run` | `cargo publish --dry-run -p <CRATE>` (requires `CRATE`)   |
-| `doc`             | `cargo doc` with warnings denied                           |
-| `docs`            | `rustdoc` in docs.rs emulation mode (nightly)             |
-| `image/pull`      | Refresh the pinned Rust CI image                           |
-| `fmt/fix`         | `cargo fmt` — manual                                      |
-| `audit/fix`       | `cargo audit fix` — manual                                |
-
-Defaults for arg-like variables (`FMT_ARGS`, `CHECK_ARGS`, `CLIPPY_ARGS`, `TEST_ARGS`) can be overridden per call.
-
-#### Usage
+`label-check.yml` reads allowed changelog and exclusion labels from the caller's `.github/release.yml`.
+The pull request must carry at least one of them.
 
 ```yaml
-# Taskfile.yml
-version: '3'
-includes:
-  rust:
-    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/v1/taskfiles/rust/Taskfile.yml
+jobs:
+  label-check:
+    uses: soltiHQ/actions/.github/workflows/label-check.yml@v1
 ```
 
-```shell
-task rust:fmt
-task rust:clippy
-task rust:test
-task rust:publish-dry-run CRATE=my-crate
-task rust:image/pull
-```
+The branch-protection check is `label-check / required` when the caller job is named `label-check`.
 
----
+### Single-crate release
 
-## Go
-
-### Taskfile module
-
-`taskfiles/go/Taskfile.yml`: Go CI tasks running inside a sandboxed Docker image
-(`ghcr.io/soltihq/ci/golang:<go-version>`, toolchain pinned to the caller's `go` directive).
-
-| Task               | Command                                   |
-|--------------------|-------------------------------------------|
-| `go/test`          | `go test ./...`                           |
-| `go/lint`          | `golangci-lint run ./...`                 |
-| `go/fumpt`         | `gofumpt -l -w` over all tracked `.go`    |
-| `go/vulnerability` | `govulncheck ./...`                       |
-| `go/mod/tidy`      | `go mod tidy`                             |
-| `image/pull`       | Refresh the pinned Go CI image            |
-
-#### Usage
+`rust-release.yml` verifies that the tagged commit belongs to `main` and that `package.version` matches the tag.
+It then publishes the crate and creates a GitHub release.
 
 ```yaml
-# Taskfile.yml
-version: '3'
+jobs:
+  publish:
+    uses: soltiHQ/actions/.github/workflows/rust-release.yml@v1
+    with:
+      crate: my-crate
+    secrets:
+      crates-io-token: ${{ secrets.CRATES_IO_TOKEN }}
+```
+
+### Workspace release
+
+`rust-workspace-release.yml` reads publishable crates from `.github/crates.txt` by default.
+The tagged commit must belong to `default-branch`, which defaults to `main`.
+The file must contain every publishable workspace crate exactly once and in dependency order.
+Every published crate version must match the tag.
+
+```yaml
+jobs:
+  publish:
+    uses: soltiHQ/actions/.github/workflows/rust-workspace-release.yml@v1
+    with:
+      crates-file: .github/crates.txt
+      prepare-task: proto/vendor
+      allow-dirty: true
+    secrets:
+      crates-io-token: ${{ secrets.CRATES_IO_TOKEN }}
+```
+
+`prepare-task` is optional.
+Use `allow-dirty` only when that task creates required package inputs.
+
+## Composite actions
+
+| Action                                      | Purpose                                                                    |
+|---------------------------------------------|----------------------------------------------------------------------------|
+| [`taskfile`](taskfile/action.yml)           | Install Task, export optional variables, and run one repository task       |
+| [`gate`](gate/action.yml)                   | Validate the results supplied through `toJSON(needs)`                      |
+| [`cargo-cache`](cargo-cache/action.yml)     | Cache `.cache/cargo` and `.cache/target` under a caller-provided scope     |
+| [`cargo-publish`](cargo-publish/action.yml) | Publish crates in order, tolerate existing versions, and retry HTTP 429    |
+| [`ghcr-build`](ghcr-build/action.yml)       | Build and publish a multi-platform GHCR image with version and commit tags |
+
+The `taskfile` action installs Task `3.44.1` by default.
+Set its `version` input to override the binary version.
+
+`gate` accepts two explicit exceptions:
+
+- `allow` tolerates any result for named jobs;
+- `allow-skipped` tolerates only `skipped` for named jobs.
+
+`ghcr-build` targets `linux/amd64` and `linux/arm64` by default.
+It publishes `<tag>` and `<tag>-sha-<commit>`.
+
+## Taskfile modules
+
+The modules provide low-level tasks.
+Consumer repositories wrap them with stable, repository-specific commands such as `ci/test` or `proto/vendor`.
+
+### [Rust](taskfiles/rust/Taskfile.yml)
+
+| Module task       | Operation                                                   |
+|-------------------|-------------------------------------------------------------|
+| `fmt`             | Check `cargo fmt`                                           |
+| `check`           | Run `cargo check`                                           |
+| `build`           | Build one package selected by `CRATE`                       |
+| `clippy`          | Run Clippy with warnings denied                             |
+| `test`            | Run Cargo tests                                             |
+| `bench`           | Run Cargo benchmarks                                        |
+| `audit`           | Run `cargo audit`                                           |
+| `package-list`    | Inspect the package file set for `CRATE`                    |
+| `publish-dry-run` | Simulate publishing `CRATE`                                 |
+| `doc`             | Build stable rustdoc with warnings denied                   |
+| `docs`            | Emulate the docs.rs nightly rustdoc build                   |
+| `image/pull`      | Refresh the selected Rust image                             |
+| `fmt/fix`         | Apply `cargo fmt`                                           |
+| `audit/fix`       | Apply supported `cargo audit fix` changes                   |
+
+Argument variables such as `CHECK_ARGS`, `CLIPPY_ARGS`, and `TEST_ARGS` let the consumer define its exact repository policy.
+
+### [Go](taskfiles/go/Taskfile.yml)
+
+```yaml
 includes:
-  ci:
-    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/main/taskfiles/go/Taskfile.yml
-    vars:
-      go_version: "1.23"
+  go:
+    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/v1/taskfiles/go/Taskfile.yml
+
+tasks:
+  ci/test:
+    cmds:
+      - task: go:test
+
+  ci/lint:
+    cmds:
+      - task: go:golangci
 ```
 
-```shell
-task ci:go/test
-task ci:go/lint
-task ci:image/pull
-```
-
----
-
-## Proto
-
-### Taskfile module
-
-`taskfiles/proto/Taskfile.yml`: Protobuf CI tasks running `buf` and `clang-format` inside a sandboxed Docker image (`ghcr.io/soltihq/ci/proto`).
-Code generation is intentionally left to consumers; this module only validates the schema.
-
-| Task          | Command                                                   |
+| Module task   | Operation                                                 |
 |---------------|-----------------------------------------------------------|
-| `lint`        | `buf lint`                                                |
-| `build`       | `buf build` (compile the schema)                          |
-| `format`      | `clang-format --dry-run --Werror` over `*.proto` (check)  |
-| `breaking`    | `buf breaking --against <main>` (override with `AGAINST`) |
-| `image/pull`  | Refresh the pinned Proto CI image                         |
-| `format/fix`  | `clang-format -i` over `*.proto` — manual                 |
+| `gofumpt`     | Check tracked Go files                                    |
+| `golangci`    | Run `golangci-lint`                                       |
+| `build`       | Build a named binary for the selected `GOOS` and `GOARCH` |
+| `govulncheck` | Run Go vulnerability analysis                             |
+| `test`        | Run Go tests                                              |
+| `proto`       | Generate protobuf sources with Buf                        |
+| `templ`       | Generate templ sources                                    |
+| `tailwindcss` | Build CSS from required `INPUT` and `OUTPUT` paths        |
+| `tidy`        | Run `go mod tidy`                                         |
+| `vendor`      | Run `go mod vendor`                                       |
+| `fmt`         | Apply gofumpt                                             |
+| `image/pull`  | Refresh the selected Go image                             |
 
-The image version is pinned with `buf_version` (there is no manifest like `Cargo.toml`/`go.mod` to read it from); 
-`breaking` compares against `main` by default.
-
-#### Usage
+### [Proto](taskfiles/proto/Taskfile.yml)
 
 ```yaml
-# Taskfile.yml
-version: '3'
 includes:
   proto:
-    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/main/taskfiles/proto/Taskfile.yml
-    vars:
-      buf_version: "1.50.0"
+    taskfile: https://raw.githubusercontent.com/soltiHQ/actions/v1/taskfiles/proto/Taskfile.yml
+
+tasks:
+  ci/lint:
+    cmds:
+      - task: proto:lint
 ```
 
-```shell
-task proto:lint
-task proto:breaking
-task proto:breaking AGAINST=https://github.com/soltiHQ/proto.git#branch=main
-task proto:image/pull
-```
+| Module task  | Operation                                                       |
+|--------------|-----------------------------------------------------------------|
+| `lint`       | Run `buf lint`                                                  |
+| `build`      | Compile the schema with `buf build`                             |
+| `format`     | Check every `.proto` file with `clang-format`                   |
+| `breaking`   | Compare against `.git#branch=main` or an explicit `AGAINST`     |
+| `format/fix` | Apply `clang-format`                                            |
+| `image/pull` | Refresh the selected Proto image                                |
 
-When `CI` is set, each Taskfile module refreshes its selected image before a task.
-When `CI` is unset, each module reuses its selected image if it is already present.
+Code generation remains a consumer responsibility.
+The Proto module validates the schema.
 
----
+### [Helpers](taskfiles/helpers/Taskfile.yml)
+
+`taskfiles/helpers/Taskfile.yml` provides two internal building blocks:
+
+- `download/file` downloads one missing file;
+- `proto/vendor` checks out a selected `soltiHQ/proto` revision and replaces mapped destination trees.
+
+Consumers decide the protobuf revision and source-to-destination mappings.
+
+## Versioning
+
+Use `@v1` for workflows and composite actions.
+Use `/v1/` in raw Taskfile URLs.
+
+Moving the `v1` tag updates every consumer on its next run.
+Test shared changes from an explicit branch or commit before moving the tag.
+
+Toolchain image versions are independent from the actions revision.
+They come from `Cargo.toml`, `go.mod`, or the explicit Proto setting.
 
 ## Contributing
 
-Found a bug? Have an idea? Pull requests and issues welcome.
+Issues and pull requests are welcome.
+
+Changes to reusable workflows, actions, and Taskfile modules affect their consumers independently.
+Test the boundary being changed from a representative caller repository.
+
+Read the [contributing guide](https://github.com/soltiHQ/.github/blob/main/CONTRIBUTING.md) before a large change.
+
+<br>
+
+<p align="center">
+  <a href="https://github.com/soltiHQ">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/soltiHQ/.github/main/assets/word/solti-word-light.svg">
+      <img src="https://raw.githubusercontent.com/soltiHQ/.github/main/assets/logo/solti-logo-dark.svg" alt="soltiHQ" height="84">
+    </picture>
+  </a>
+</p>
