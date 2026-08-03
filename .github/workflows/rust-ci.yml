@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
+      selected: ${{ steps.set.outputs.selected }}
     steps:
       - uses: actions/checkout@v6
       - id: set
@@ -68,7 +69,28 @@ jobs:
             ' Cargo.toml)
           fi
           matrix=$(printf 'none\n%s\nall\n' "$feats" | jq -Rsc 'split("\n") | map(select(length > 0))')
+          selected=$(cargo metadata --locked --no-deps --format-version 1 | jq -ce '
+            . as $metadata
+            | (.metadata.ci."clippy-matrix" // []) as $entries
+            | if (
+                ($entries | type == "array")
+                and all($entries[];
+                  (. | type == "object")
+                  and (.package | type == "string")
+                  and (.features | type == "array" and length > 0)
+                  and all(.features[]; type == "string")
+                  and (. as $entry
+                    | ($metadata.packages | any(.name == $entry.package))
+                    and (($metadata.packages[] | select(.name == $entry.package) | .features) as $available
+                      | all($entry.features[]; $available[.] != null)))
+                )
+              )
+              then $entries | map({package, features: (.features | join(","))})
+              else error("workspace.metadata.ci.clippy-matrix contains an unknown package or feature")
+              end
+          ')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "selected=$selected" >> "$GITHUB_OUTPUT"
 
   clippy:
     needs: clippy-features
@@ -86,6 +108,25 @@ jobs:
         uses: soltiHQ/actions/taskfile@v1
         with:
           command: ci/clippy FEATURE=${{ matrix.feature }}
+
+  clippy-selected:
+    name: Clippy (${{ matrix.package }} / ${{ matrix.features }})
+    needs: clippy-features
+    if: needs.clippy-features.outputs.selected != '[]'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.clippy-features.outputs.selected) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: soltiHQ/actions/cargo-cache@v1
+        with:
+          scope: clippy-${{ matrix.package }}-${{ matrix.features }}
+      - name: Run selected feature configuration
+        uses: soltiHQ/actions/taskfile@v1
+        with:
+          command: ci/clippy CRATE=${{ matrix.package }} FEATURE=${{ matrix.features }}
 
   audit:
     runs-on: ubuntu-24.04
@@ -158,11 +199,11 @@ jobs:
 
   gate:
     if: always()
-    needs: [fmt, check, unittest, integration, clippy, audit, docs, examples, examples-build, package]
+    needs: [fmt, check, unittest, integration, clippy, clippy-selected, audit, docs, examples, examples-build, package]
     runs-on: ubuntu-24.04
     steps:
       - name: Gate
         uses: soltiHQ/actions/gate@v1
         with:
           results: ${{ toJSON(needs) }}
-          allow-skipped: examples-build package
+          allow-skipped: clippy-selected examples-build package

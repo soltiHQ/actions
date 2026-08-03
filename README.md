@@ -46,6 +46,18 @@ jobs:
 The publish dry-run is advisory.
 It has no dependencies and is not part of `gate`.
 
+Workspace repositories can define focused Clippy configurations in Cargo metadata:
+
+```toml
+[workspace.metadata.ci]
+clippy-matrix = [
+    { package = "my-crate", features = ["feature-a", "feature-b"] },
+]
+```
+
+Each entry runs with only the listed features enabled.
+The workspace-wide `none` and `all` checks remain active.
+
 The branch-protection check to require is `ci / gate` (plus `label-check / required` from `label-check.yml`).
 
 ---
