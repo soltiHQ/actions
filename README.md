@@ -87,6 +87,8 @@ The branch-protection check is `ci / gate` when the caller job is named `ci`.
 | [`rust-workspace-release.yml`](.github/workflows/rust-workspace-release.yml) | Publish workspace crates in dependency order and create one release |
 | [`label-check.yml`](.github/workflows/label-check.yml)                       | Require a changelog label declared in `.github/release.yml`         |
 
+> TODO: fix it;  Both Rust release workflows install `protoc` before Cargo verifies and publishes package tarballs.
+
 ### Rust CI
 
 `rust-ci.yml` calls the consumer repository's `ci/*` tasks.
