@@ -1,5 +1,10 @@
 version: '3'
 
+includes:
+  docker:
+    taskfile: ../docker/Taskfile.yml
+    internal: true
+
 vars:
   git_root:
     sh: git rev-parse --show-toplevel
@@ -10,41 +15,13 @@ vars:
   image: 'ghcr.io/soltihq/ci/proto:{{.buf_version}}'
 
 tasks:
-  _docker/run:
-    internal: true
-    silent: true
-    requires:
-      vars: [ IMAGE, CMD, MOUNT_DIR ]
-    cmd: |
-      set -euo pipefail
-
-      if [ -n "${CI:-}" ] || ! docker image inspect "{{.IMAGE}}" >/dev/null 2>&1; then
-        echo "pulling: {{.IMAGE}}"
-        docker pull -q "{{.IMAGE}}" >/dev/null 2>&1 || {
-          echo "Failed to pull image: {{.IMAGE}}"
-          exit 1
-        }
-      fi
-      docker run --rm --init --pull=never \
-        --security-opt no-new-privileges \
-        --user $(id -u):$(id -g) \
-        --cap-drop=ALL \
-        \
-        --volume "{{.git_root}}/{{.MOUNT_DIR}}:/workspace:rw" \
-        {{if .VOLUMES}}{{range $vol := .VOLUMES}}--volume {{$vol}} {{end}}{{end}} \
-        {{if .ENVS}}{{range $env := .ENVS}}--env "{{$env}}" {{end}}{{end}} \
-        \
-        --workdir /workspace \
-        {{.IMAGE}} \
-        {{.CMD}}
-
   _buf/tool:
     internal: true
     silent: true
     requires:
       vars: [ CMD ]
     cmds:
-      - task: _docker/run
+      - task: docker:run
         vars:
           IMAGE: "{{.image}}"
           CMD: "{{.CMD}}"
@@ -91,11 +68,6 @@ tasks:
             then buf breaking --against "{{.AGAINST}}";
             else echo "baseline {{.AGAINST}} has no schema yet, skipping breaking (bootstrap)";
             fi'
-
-  image/pull:
-    desc: Refresh the Proto CI image.
-    silent: true
-    cmd: docker pull -q "{{.image}}"
 
   format/fix:
     desc: Run 'clang-format -i' (auto-format protos).

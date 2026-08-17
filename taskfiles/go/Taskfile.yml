@@ -1,5 +1,10 @@
 version: '3'
 
+includes:
+  docker:
+    taskfile: ../docker/Taskfile.yml
+    internal: true
+
 vars:
   git_root:
     sh: git rev-parse --show-toplevel
@@ -10,34 +15,6 @@ vars:
   image: 'ghcr.io/soltihq/ci/golang:{{.go_version}}'
 
 tasks:
-  _docker/run:
-    internal: true
-    silent: true
-    requires:
-      vars: [ IMAGE, CMD, MOUNT_DIR ]
-    cmd: |
-      set -euo pipefail
-
-      if [ -n "${CI:-}" ] || ! docker image inspect "{{.IMAGE}}" >/dev/null 2>&1; then
-        echo "pulling: {{.IMAGE}}"
-        docker pull -q "{{.IMAGE}}" >/dev/null 2>&1 || {
-          echo "Failed to pull image: {{.IMAGE}}"
-          exit 1
-        }
-      fi
-      docker run --rm --init --pull=never \
-        --security-opt no-new-privileges \
-        --user $(id -u):$(id -g) \
-        --cap-drop=ALL \
-        \
-        --volume "{{.git_root}}/{{.MOUNT_DIR}}:/workspace:rw" \
-        {{if .VOLUMES}}{{range $vol := .VOLUMES}}--volume {{$vol}} {{end}}{{end}} \
-        {{if .ENVS}}{{range $env := .ENVS}}--env "{{$env}}" {{end}}{{end}} \
-        \
-        --workdir /workspace \
-        {{.IMAGE}} \
-        {{.CMD}}
-
   _go/tool:
     internal: true
     silent: true
@@ -45,7 +22,7 @@ tasks:
       vars: [ CMD ]
     cmds:
       - cmd: mkdir -p "{{.git_root}}/{{.cache_dir}}"
-      - task: _docker/run
+      - task: docker:run
         vars:
           IMAGE: "{{.image}}"
           CMD: "{{.CMD}}"
@@ -155,11 +132,6 @@ tasks:
       - task: _go/tool
         vars:
           CMD: "tailwindcss -c {{.CONFIG}} -i {{.INPUT}} -o {{.OUTPUT}} {{.TAILWIND_ARGS}}"
-
-  image/pull:
-    desc: Refresh the Go CI image.
-    silent: true
-    cmd: docker pull -q "{{.image}}"
 
   tidy:
     desc: Run 'go mod tidy'.

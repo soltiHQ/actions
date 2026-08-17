@@ -22,11 +22,14 @@ Remote Taskfile includes should use the same tag.
 
 The Taskfile modules run tools inside versioned images from [`soltiHQ/images`](https://github.com/soltiHQ/images):
 
-| Module | Image                                 | Version source                        |
-|--------|---------------------------------------|---------------------------------------|
-| Rust   | `ghcr.io/soltihq/ci/rust:<version>`   | Root `Cargo.toml` `rust-version`      |
-| Go     | `ghcr.io/soltihq/ci/golang:<version>` | Root `go.mod` `go` directive          |
-| Proto  | `ghcr.io/soltihq/ci/proto:<version>`  | `buf_version`, defaulting to `1.50.0` |
+| Module    | Image                                     | Version source                        |
+|-----------|-------------------------------------------|---------------------------------------|
+| Rust      | `ghcr.io/soltihq/ci/rust:<version>`       | Root `Cargo.toml` `rust-version`      |
+| Go        | `ghcr.io/soltihq/ci/golang:<version>`     | Root `go.mod` `go` directive          |
+| Proto     | `ghcr.io/soltihq/ci/proto:<version>`      | `buf_version`, defaulting to `1.50.0` |
+| Node      | `ghcr.io/soltihq/ci/node:<version>`       | `app/.node-version`                   |
+| Terraform | `ghcr.io/soltihq/ci/terraform:<version>`  | `tf/.terraform-version`               |
+| AWS       | `ghcr.io/soltihq/ci/aws:<version>`        | Root `.aws-cli-version`               |
 
 CI refreshes the selected image before each task.
 Local runs reuse an existing image and pull it when missing.
@@ -86,6 +89,8 @@ The branch-protection check is `ci / gate` when the caller job is named `ci`.
 | [`rust-release.yml`](.github/workflows/rust-release.yml)                     | Publish one crate and create one GitHub release                     |
 | [`rust-workspace-release.yml`](.github/workflows/rust-workspace-release.yml) | Publish workspace crates in dependency order and create one release |
 | [`label-check.yml`](.github/workflows/label-check.yml)                       | Require a changelog label declared in `.github/release.yml`         |
+| [`static-ci.yml`](.github/workflows/static-ci.yml)                           | Build a static site and validate its Terraform stack                |
+| [`static-release.yml`](.github/workflows/static-release.yml)                 | Apply infrastructure, upload a tagged site, and invalidate its CDN  |
 
 > TODO: fix it;  Both Rust release workflows install `protoc` before Cargo verifies and publishes package tarballs.
 
@@ -134,6 +139,18 @@ jobs:
 ```
 
 The branch-protection check is `label-check / required` when the caller job is named `label-check`.
+
+### Static site CI and release
+
+`static-ci.yml` runs the consumer's code build, dependency audit, and Terraform format/validate checks.
+`static-release.yml` verifies that the tag belongs to the default branch, builds one artifact, applies Terraform,
+exports the resulting infrastructure outputs, uploads the artifact to the resolved S3 bucket, invalidates CloudFront,
+and creates the GitHub release.
+
+The release workflow receives infrastructure coordinates as typed inputs.
+AWS authentication uses a role assumed through GitHub OIDC; consumers do not pass long-lived AWS access keys.
+Terraform owns infrastructure state and output generation. The deploy job receives only the resolved bucket,
+CloudFront distribution ID, and AWS region before invoking the consumer's AWS deployment task.
 
 ### Single-crate release
 
@@ -197,6 +214,7 @@ It publishes `<tag>` and `<tag>-sha-<commit>`.
 
 The modules provide low-level tasks.
 Consumer repositories wrap them with stable, repository-specific commands such as `ci/test` or `proto/vendor`.
+Every tool module includes the shared Docker module internally and delegates container execution to it.
 
 ### [Rust](taskfiles/rust/Taskfile.yml)
 
@@ -213,7 +231,6 @@ Consumer repositories wrap them with stable, repository-specific commands such a
 | `publish-dry-run` | Simulate publishing `CRATE`                                 |
 | `doc`             | Build stable rustdoc with warnings denied                   |
 | `docs`            | Emulate the docs.rs nightly rustdoc build                   |
-| `image/pull`      | Refresh the selected Rust image                             |
 | `fmt/fix`         | Apply `cargo fmt`                                           |
 | `audit/fix`       | Apply supported `cargo audit fix` changes                   |
 
@@ -249,7 +266,6 @@ tasks:
 | `tidy`        | Run `go mod tidy`                                         |
 | `vendor`      | Run `go mod vendor`                                       |
 | `fmt`         | Apply gofumpt                                             |
-| `image/pull`  | Refresh the selected Go image                             |
 
 ### [Proto](taskfiles/proto/Taskfile.yml)
 
@@ -271,10 +287,26 @@ tasks:
 | `format`     | Check every `.proto` file with `clang-format`                   |
 | `breaking`   | Compare against `.git#branch=main` or an explicit `AGAINST`     |
 | `format/fix` | Apply `clang-format`                                            |
-| `image/pull` | Refresh the selected Proto image                                |
 
 Code generation remains a consumer responsibility.
 The Proto module validates the schema.
+
+### [Node](taskfiles/node/Taskfile.yml)
+
+The Node module derives its image tag from `app/.node-version` and exposes internal `type-check`, `build`, and `audit` tasks.
+Each command installs the exact lockfile with `npm ci` inside the pinned `ghcr.io/soltihq/ci/node` image.
+
+### [Terraform](taskfiles/terraform/Taskfile.yml)
+
+The Terraform module derives its image tag from `tf/.terraform-version`. It exposes internal format, validate, and apply
+tasks. Remote operations initialize the S3 backend with its lockfile. The static release workflow reads the resulting
+Terraform outputs directly after apply and passes the selected values to the deployment job.
+
+### [AWS](taskfiles/aws/Taskfile.yml)
+
+The AWS module derives its image tag from the repository-root `.aws-cli-version`. It exposes internal `s3/publish`
+and `cloudfront/invalidate` tasks. `s3/publish` uploads immutable assets, uploads `index.html` with no-cache metadata,
+and removes stale non-index objects. `cloudfront/invalidate` creates a full distribution invalidation and waits for it.
 
 ### [Helpers](taskfiles/helpers/Taskfile.yml)
 
@@ -293,8 +325,9 @@ Use `/v1/` in raw Taskfile URLs.
 Moving the `v1` tag updates every consumer on its next run.
 Test shared changes from an explicit branch or commit before moving the tag.
 
-Toolchain image versions are independent from the actions revision.
-They come from `Cargo.toml`, `go.mod`, or the explicit Proto setting.
+Toolchain image versions are independent of the actions revision.
+They come from `Cargo.toml`, `go.mod`, `app/.node-version`, `tf/.terraform-version`, the repository-root
+`.aws-cli-version`, or the explicit Proto setting.
 
 ## Contributing
 

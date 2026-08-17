@@ -1,0 +1,60 @@
+version: '3'
+
+includes:
+  docker:
+    taskfile: ../docker/Taskfile.yml
+    internal: true
+
+vars:
+  git_root:
+    sh: git rev-parse --show-toplevel
+  app_dir: '{{.app_dir | default "app"}}'
+  node_cache_dir: '{{.node_cache_dir | default ".cache/node"}}'
+  node_version:
+    sh: cat {{.git_root}}/{{.app_dir}}/.node-version
+  image: 'ghcr.io/soltihq/ci/node:{{.node_version}}'
+
+tasks:
+  _npm/tool:
+    internal: true
+    silent: true
+    requires:
+      vars: [ CMD ]
+    cmds:
+      - cmd: mkdir -p "{{.git_root}}/{{.node_cache_dir}}"
+      - task: docker:run
+        vars:
+          IMAGE: "{{.image}}"
+          CMD: "{{.CMD}}"
+          MOUNT_DIR: "."
+          WORKDIR: "/workspace/{{.app_dir}}"
+          VOLUMES:
+            - "{{.git_root}}/{{.node_cache_dir}}:/tmp/npm-cache:rw"
+          ENVS:
+            - "HOME=/tmp"
+            - "NPM_CONFIG_CACHE=/tmp/npm-cache"
+            - "NPM_CONFIG_UPDATE_NOTIFIER=false"
+
+  type-check:
+    internal: true
+    silent: true
+    cmds:
+      - task: _npm/tool
+        vars:
+          CMD: "sh -c 'npm ci && npm run type-check'"
+
+  build:
+    internal: true
+    silent: true
+    cmds:
+      - task: _npm/tool
+        vars:
+          CMD: "sh -c 'npm ci && npm run build'"
+
+  audit:
+    internal: true
+    silent: true
+    cmds:
+      - task: _npm/tool
+        vars:
+          CMD: "sh -c 'npm ci && npm audit --audit-level=high'"

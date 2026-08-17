@@ -1,0 +1,104 @@
+version: '3'
+
+includes:
+  docker:
+    taskfile: ../docker/Taskfile.yml
+    internal: true
+
+vars:
+  git_root:
+    sh: git rev-parse --show-toplevel
+  tf_dir: '{{.tf_dir | default "tf"}}'
+  terraform_cache_dir: '{{.terraform_cache_dir | default ".cache/terraform"}}'
+  terraform_version:
+    sh: cat {{.git_root}}/{{.tf_dir}}/.terraform-version
+  image: 'ghcr.io/soltihq/ci/terraform:{{.terraform_version}}'
+
+tasks:
+  _terraform/tool:
+    internal: true
+    silent: true
+    requires:
+      vars: [ CMD ]
+    cmds:
+      - cmd: mkdir -p "{{.git_root}}/{{.terraform_cache_dir}}/plugins"
+      - task: docker:run
+        vars:
+          IMAGE: "{{.image}}"
+          CMD: "{{.CMD}}"
+          MOUNT_DIR: "."
+          WORKDIR: "/workspace/{{.tf_dir}}"
+          VOLUMES:
+            - "{{.git_root}}/{{.terraform_cache_dir}}:/tmp/terraform-cache:rw"
+          ENVS:
+            - "HOME=/tmp"
+            - "CHECKPOINT_DISABLE=1"
+            - "TF_IN_AUTOMATION=1"
+            - "TF_PLUGIN_CACHE_DIR=/tmp/terraform-cache/plugins"
+            - "AWS_ACCESS_KEY_ID"
+            - "AWS_SECRET_ACCESS_KEY"
+            - "AWS_SESSION_TOKEN"
+            - "AWS_REGION"
+            - "AWS_DEFAULT_REGION"
+            - "TF_VAR_aws_region"
+            - "TF_VAR_domain_name"
+            - "TF_VAR_site_bucket_name"
+            - "TF_VAR_acm_certificate_arn"
+
+  _terraform/init:
+    internal: true
+    silent: true
+    requires:
+      vars: [ BACKEND_BUCKET, BACKEND_KEY, BACKEND_REGION ]
+    cmds:
+      - task: _terraform/tool
+        vars:
+          CMD: >-
+            terraform init -input=false -reconfigure
+            -lockfile=readonly
+            -backend-config='bucket={{.BACKEND_BUCKET}}'
+            -backend-config='key={{.BACKEND_KEY}}'
+            -backend-config='region={{.BACKEND_REGION}}'
+            -backend-config='encrypt=true'
+            -backend-config='use_lockfile=true'
+
+  fmt:
+    internal: true
+    silent: true
+    cmds:
+      - task: _terraform/tool
+        vars:
+          CMD: terraform fmt -check -recursive -diff
+
+  fmt/fix:
+    desc: Format Terraform files.
+    silent: true
+    cmds:
+      - task: _terraform/tool
+        vars:
+          CMD: terraform fmt -recursive
+
+  validate:
+    internal: true
+    silent: true
+    cmds:
+      - task: _terraform/tool
+        vars:
+          CMD: >-
+            sh -c 'terraform init -backend=false -input=false
+            -lockfile=readonly && terraform validate -no-color'
+
+  apply:
+    internal: true
+    silent: true
+    requires:
+      vars: [ BACKEND_BUCKET, BACKEND_KEY, BACKEND_REGION ]
+    cmds:
+      - task: _terraform/init
+        vars:
+          BACKEND_BUCKET: '{{.BACKEND_BUCKET}}'
+          BACKEND_KEY: '{{.BACKEND_KEY}}'
+          BACKEND_REGION: '{{.BACKEND_REGION}}'
+      - task: _terraform/tool
+        vars:
+          CMD: terraform apply -auto-approve -input=false -lock-timeout=5m -no-color

@@ -1,0 +1,84 @@
+version: '3'
+
+includes:
+  docker:
+    taskfile: ../docker/Taskfile.yml
+    internal: true
+
+vars:
+  git_root:
+    sh: git rev-parse --show-toplevel
+  aws_version:
+    sh: cat {{.git_root}}/.aws-cli-version
+  image: 'ghcr.io/soltihq/ci/aws:{{.aws_version}}'
+
+tasks:
+  _aws/tool:
+    internal: true
+    silent: true
+    requires:
+      vars: [ CMD ]
+    cmds:
+      - task: docker:run
+        vars:
+          IMAGE: "{{.image}}"
+          CMD: "{{.CMD}}"
+          MOUNT_DIR: "."
+          ENVS:
+            - "HOME=/tmp"
+            - "AWS_ACCESS_KEY_ID"
+            - "AWS_SECRET_ACCESS_KEY"
+            - "AWS_SESSION_TOKEN"
+            - "AWS_REGION"
+            - "AWS_DEFAULT_REGION"
+
+  s3/publish:
+    internal: true
+    silent: true
+    requires:
+      vars: [ SOURCE_DIR, BUCKET ]
+    cmds:
+      - task: _aws/tool
+        vars:
+          CMD: >-
+            bash -c '
+              set -euo pipefail;
+              source_dir="/workspace/{{.SOURCE_DIR}}";
+              bucket="{{.BUCKET}}";
+              test -d "$source_dir";
+              test -f "$source_dir/index.html";
+              aws s3 sync "$source_dir" "s3://$bucket"
+                --exclude "index.html"
+                --cache-control "public,max-age=31536000,immutable"
+                --only-show-errors;
+              aws s3 cp "$source_dir/index.html" "s3://$bucket/index.html"
+                --cache-control "no-cache,no-store,must-revalidate"
+                --content-type "text/html; charset=utf-8"
+                --only-show-errors;
+              aws s3 sync "$source_dir" "s3://$bucket"
+                --delete
+                --exclude "index.html"
+                --only-show-errors;
+            '
+
+  cloudfront/invalidate:
+    internal: true
+    silent: true
+    requires:
+      vars: [ DISTRIBUTION_ID ]
+    cmds:
+      - task: _aws/tool
+        vars:
+          CMD: >-
+            bash -c '
+              set -euo pipefail;
+              distribution_id="{{.DISTRIBUTION_ID}}";
+              invalidation=$(aws cloudfront create-invalidation
+                --distribution-id "$distribution_id"
+                --paths "/*"
+                --query "Invalidation.Id"
+                --output text);
+              aws cloudfront wait invalidation-completed
+                --distribution-id "$distribution_id"
+                --id "$invalidation";
+            '
