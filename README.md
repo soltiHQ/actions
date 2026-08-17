@@ -86,13 +86,12 @@ The branch-protection check is `ci / gate` when the caller job is named `ci`.
 | Workflow                                                                     | Purpose                                                             |
 |------------------------------------------------------------------------------|---------------------------------------------------------------------|
 | [`rust-ci.yml`](.github/workflows/rust-ci.yml)                               | Validate a Rust package or workspace                                |
-| [`rust-release.yml`](.github/workflows/rust-release.yml)                     | Publish one crate and create one GitHub release                     |
-| [`rust-workspace-release.yml`](.github/workflows/rust-workspace-release.yml) | Publish workspace crates in dependency order and create one release |
+| [`rust-release.yml`](.github/workflows/rust-release.yml)                     | Publish Rust crates in dependency order and create one release      |
 | [`label-check.yml`](.github/workflows/label-check.yml)                       | Require a changelog label declared in `.github/release.yml`         |
 | [`static-ci.yml`](.github/workflows/static-ci.yml)                           | Build a static site and validate its Terraform stack                |
 | [`static-release.yml`](.github/workflows/static-release.yml)                 | Apply infrastructure, upload a tagged site, and invalidate its CDN  |
 
-> TODO: fix it;  Both Rust release workflows install `protoc` before Cargo verifies and publishes package tarballs.
+> TODO: fix it; The Rust release workflow installs `protoc` before Cargo publishes package tarballs.
 
 ### Rust CI
 
@@ -152,32 +151,17 @@ AWS authentication uses a role assumed through GitHub OIDC; consumers do not pas
 Terraform owns infrastructure state and output generation. The deploy job receives only the resolved bucket,
 CloudFront distribution ID, and AWS region before invoking the consumer's AWS deployment task.
 
-### Single-crate release
+### Rust release
 
-`rust-release.yml` verifies that the tagged commit belongs to `main` and that `package.version` matches the tag.
-It then publishes the crate and creates a GitHub release.
-
-```yaml
-jobs:
-  publish:
-    uses: soltiHQ/actions/.github/workflows/rust-release.yml@v1
-    with:
-      crate: my-crate
-    secrets:
-      crates-io-token: ${{ secrets.CRATES_IO_TOKEN }}
-```
-
-### Workspace release
-
-`rust-workspace-release.yml` reads publishable crates from `.github/crates.txt` by default.
+`rust-release.yml` reads one or more publishable crates from `.github/crates.txt` by default.
 The tagged commit must belong to `default-branch`, which defaults to `main`.
-The file must contain every publishable workspace crate exactly once and in dependency order.
+The file must contain every publishable crate exactly once and in dependency order.
 Every published crate version must match the tag.
 
 ```yaml
 jobs:
   publish:
-    uses: soltiHQ/actions/.github/workflows/rust-workspace-release.yml@v1
+    uses: soltiHQ/actions/.github/workflows/rust-release.yml@v1
     with:
       crates-file: .github/crates.txt
       prepare-task: proto/vendor
