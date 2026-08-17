@@ -1,0 +1,59 @@
+name: Static CI
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build static site
+        uses: soltiHQ/actions/taskfile@v1
+        with: { command: ci/build }
+
+  audit:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Audit dependencies
+        uses: soltiHQ/actions/taskfile@v1
+        with: { command: ci/audit }
+
+  terraform-fmt:
+    name: Terraform format
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check Terraform formatting
+        uses: soltiHQ/actions/taskfile@v1
+        with: { command: ci/terraform-fmt }
+
+  terraform-validate:
+    name: Terraform validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate Terraform
+        uses: soltiHQ/actions/taskfile@v1
+        with: { command: ci/terraform-validate }
+
+  gate:
+    if: always()
+    needs: [build, audit, terraform-fmt, terraform-validate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Gate
+        uses: soltiHQ/actions/gate@v1
+        with:
+          results: ${{ toJSON(needs) }}

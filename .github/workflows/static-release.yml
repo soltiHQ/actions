@@ -1,0 +1,182 @@
+name: Static release
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        description: AWS region containing the site bucket.
+        type: string
+        required: true
+      terraform-state-bucket:
+        description: S3 bucket containing Terraform state.
+        type: string
+        required: true
+      terraform-state-key:
+        description: Terraform state object key.
+        type: string
+        required: true
+      terraform-state-region:
+        description: AWS region containing the Terraform state bucket.
+        type: string
+        required: true
+      terraform-role-arn:
+        description: AWS role assumed through GitHub OIDC for apply and deploy.
+        type: string
+        required: true
+      domain-name:
+        description: CloudFront alias managed outside this stack.
+        type: string
+        required: true
+      site-bucket-name:
+        description: Globally unique S3 bucket name for the built site.
+        type: string
+        required: true
+      acm-certificate-arn:
+        description: ACM certificate ARN in us-east-1 for CloudFront.
+        type: string
+        required: true
+      default-branch:
+        description: Branch that must contain the tagged commit.
+        type: string
+        required: false
+        default: main
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Verify tag commit belongs to the default branch
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ inputs.default-branch }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$DEFAULT_BRANCH"
+          tag_commit=$(git rev-list -n 1 "$REF")
+          git rev-parse --verify "origin/$DEFAULT_BRANCH" >/dev/null
+          if ! git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::Tag commit is not an ancestor of origin/$DEFAULT_BRANCH"
+            exit 1
+          fi
+
+  build:
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build static site
+        uses: soltiHQ/actions/taskfile@v1
+        with: { command: ci/build }
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-site-${{ github.sha }}
+          path: app/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  apply:
+    needs: [verify, build]
+    runs-on: ubuntu-24.04
+    outputs:
+      site-bucket-name: ${{ steps.read_outputs.outputs.site_bucket_name }}
+      cloudfront-distribution-id: ${{ steps.read_outputs.outputs.cloudfront_distribution_id }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ inputs.aws-region }}
+      AWS_DEFAULT_REGION: ${{ inputs.aws-region }}
+      TF_BACKEND_BUCKET: ${{ inputs.terraform-state-bucket }}
+      TF_BACKEND_KEY: ${{ inputs.terraform-state-key }}
+      TF_BACKEND_REGION: ${{ inputs.terraform-state-region }}
+      TF_VAR_aws_region: ${{ inputs.aws-region }}
+      TF_VAR_domain_name: ${{ inputs.domain-name }}
+      TF_VAR_site_bucket_name: ${{ inputs.site-bucket-name }}
+      TF_VAR_acm_certificate_arn: ${{ inputs.acm-certificate-arn }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.terraform-role-arn }}
+          role-session-name: solti-site-apply-${{ github.run_id }}
+      - name: Apply Terraform
+        uses: soltiHQ/actions/taskfile@v1
+        with: { command: cd/terraform-apply }
+      - name: Read Terraform outputs
+        id: read_outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform_version=$(<tf/.terraform-version)
+          outputs=$(docker run --rm --init --pull=always \
+            --security-opt no-new-privileges \
+            --user "$(id -u):$(id -g)" \
+            --cap-drop=ALL \
+            --volume "$GITHUB_WORKSPACE:/workspace:rw" \
+            --workdir /workspace/tf \
+            --env AWS_ACCESS_KEY_ID \
+            --env AWS_SECRET_ACCESS_KEY \
+            --env AWS_SESSION_TOKEN \
+            --env AWS_REGION \
+            --env AWS_DEFAULT_REGION \
+            "ghcr.io/soltihq/ci/terraform:$terraform_version" \
+            terraform output -json)
+          site_bucket_name=$(jq -er '.site_bucket_name.value | select(type == "string" and length > 0)' <<<"$outputs")
+          cloudfront_distribution_id=$(jq -er '.cloudfront_distribution_id.value | select(type == "string" and length > 0)' <<<"$outputs")
+          echo "site_bucket_name=$site_bucket_name" >> "$GITHUB_OUTPUT"
+          echo "cloudfront_distribution_id=$cloudfront_distribution_id" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: [build, apply]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ inputs.aws-region }}
+      AWS_DEFAULT_REGION: ${{ inputs.aws-region }}
+      SITE_BUCKET_NAME: ${{ needs.apply.outputs['site-bucket-name'] }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ needs.apply.outputs['cloudfront-distribution-id'] }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download site artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: static-site-${{ github.sha }}
+          path: app/dist
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.terraform-role-arn }}
+          role-session-name: solti-site-deploy-${{ github.run_id }}
+      - name: Upload site and invalidate CloudFront
+        uses: soltiHQ/actions/taskfile@v1
+        with: { command: cd/deploy }
+
+  gh-release:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
