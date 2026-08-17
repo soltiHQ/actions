@@ -125,6 +125,7 @@ jobs:
             --user "$(id -u):$(id -g)" \
             --cap-drop=ALL \
             --volume "$GITHUB_WORKSPACE:/workspace:rw" \
+            --volume "$GITHUB_WORKSPACE/.cache/terraform:/tmp/terraform-cache:ro" \
             --workdir /workspace/tf \
             --env AWS_ACCESS_KEY_ID \
             --env AWS_SECRET_ACCESS_KEY \
