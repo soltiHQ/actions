@@ -10,8 +10,7 @@ vars:
     sh: git rev-parse --show-toplevel
   app_dir: '{{.app_dir | default "app"}}'
   node_cache_dir: '{{.node_cache_dir | default ".cache/node"}}'
-  node_version:
-    sh: cat {{.git_root}}/{{.app_dir}}/.node-version
+  node_version: '22.23.1'
   image: 'ghcr.io/soltihq/ci/node:{{.node_version}}'
 
 tasks:

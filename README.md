@@ -27,9 +27,9 @@ The Taskfile modules run tools inside versioned images from [`soltiHQ/images`](h
 | Rust      | `ghcr.io/soltihq/ci/rust:<version>`       | Root `Cargo.toml` `rust-version`      |
 | Go        | `ghcr.io/soltihq/ci/golang:<version>`     | Root `go.mod` `go` directive          |
 | Proto     | `ghcr.io/soltihq/ci/proto:<version>`      | `buf_version`, defaulting to `1.50.0` |
-| Node      | `ghcr.io/soltihq/ci/node:<version>`       | `app/.node-version`                   |
-| Terraform | `ghcr.io/soltihq/ci/terraform:<version>`  | `tf/.terraform-version`               |
-| AWS       | `ghcr.io/soltihq/ci/aws:<version>`        | Root `.aws-cli-version`               |
+| Node      | `ghcr.io/soltihq/ci/node:<version>`       | Shared Node Taskfile                  |
+| Terraform | `ghcr.io/soltihq/ci/terraform:<version>`  | Shared Terraform Taskfile             |
+| AWS       | `ghcr.io/soltihq/ci/aws:<version>`        | Shared AWS Taskfile                   |
 
 CI refreshes the selected image before each task.
 Local runs reuse an existing image and pull it when missing.
@@ -277,18 +277,18 @@ The Proto module validates the schema.
 
 ### [Node](taskfiles/node/Taskfile.yml)
 
-The Node module derives its image tag from `app/.node-version` and exposes internal `type-check`, `build`, and `audit` tasks.
+The Node module pins its image tag in the shared Taskfile and exposes internal `type-check`, `build`, and `audit` tasks.
 Each command installs the exact lockfile with `npm ci` inside the pinned `ghcr.io/soltihq/ci/node` image.
 
 ### [Terraform](taskfiles/terraform/Taskfile.yml)
 
-The Terraform module derives its image tag from `tf/.terraform-version`. It exposes internal format, validate, and apply
+The Terraform module pins its image tag in the shared Taskfile. It exposes internal format, validate, and apply
 tasks. Remote operations initialize the S3 backend with its lockfile. The static release workflow reads the resulting
 Terraform outputs directly after apply and passes the selected values to the deployment job.
 
 ### [AWS](taskfiles/aws/Taskfile.yml)
 
-The AWS module derives its image tag from the repository-root `.aws-cli-version`. It exposes internal `s3/publish`
+The AWS module pins its image tag in the shared Taskfile. It exposes internal `s3/publish`
 and `cloudfront/invalidate` tasks. `s3/publish` uploads immutable assets, uploads `index.html` with no-cache metadata,
 and removes stale non-index objects. `cloudfront/invalidate` creates a full distribution invalidation and waits for it.
 
@@ -310,8 +310,7 @@ Moving the `v1` tag updates every consumer on its next run.
 Test shared changes from an explicit branch or commit before moving the tag.
 
 Toolchain image versions are independent of the actions revision.
-They come from `Cargo.toml`, `go.mod`, `app/.node-version`, `tf/.terraform-version`, the repository-root
-`.aws-cli-version`, or the explicit Proto setting.
+They come from `Cargo.toml`, `go.mod`, the shared Node, Terraform, and AWS Taskfiles, or the explicit Proto setting.
 
 ## Contributing
 

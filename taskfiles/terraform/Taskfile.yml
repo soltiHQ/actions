@@ -10,8 +10,7 @@ vars:
     sh: git rev-parse --show-toplevel
   tf_dir: '{{.tf_dir | default "tf"}}'
   terraform_cache_dir: '{{.terraform_cache_dir | default ".cache/terraform"}}'
-  terraform_version:
-    sh: cat {{.git_root}}/{{.tf_dir}}/.terraform-version
+  terraform_version: '1.15.8'
   image: 'ghcr.io/soltihq/ci/terraform:{{.terraform_version}}'
 
 tasks:

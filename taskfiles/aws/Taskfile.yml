@@ -8,8 +8,7 @@ includes:
 vars:
   git_root:
     sh: git rev-parse --show-toplevel
-  aws_version:
-    sh: cat {{.git_root}}/.aws-cli-version
+  aws_version: '2.36.24'
   image: 'ghcr.io/soltihq/ci/aws:{{.aws_version}}'
 
 tasks:

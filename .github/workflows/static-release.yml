@@ -103,6 +103,7 @@ jobs:
       TF_VAR_domain_name: ${{ inputs.domain-name }}
       TF_VAR_site_bucket_name: ${{ inputs.site-bucket-name }}
       TF_VAR_acm_certificate_arn: ${{ inputs.acm-certificate-arn }}
+      TERRAFORM_IMAGE: ghcr.io/soltihq/ci/terraform:1.15.8
     steps:
       - uses: actions/checkout@v6
       - name: Configure AWS credentials
@@ -119,7 +120,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          terraform_version=$(<tf/.terraform-version)
           outputs=$(docker run --rm --init --pull=always \
             --security-opt no-new-privileges \
             --user "$(id -u):$(id -g)" \
@@ -131,7 +131,7 @@ jobs:
             --env AWS_SESSION_TOKEN \
             --env AWS_REGION \
             --env AWS_DEFAULT_REGION \
-            "ghcr.io/soltihq/ci/terraform:$terraform_version" \
+            "$TERRAFORM_IMAGE" \
             terraform output -json)
           site_bucket_name=$(jq -er '.site_bucket_name.value | select(type == "string" and length > 0)' <<<"$outputs")
           cloudfront_distribution_id=$(jq -er '.cloudfront_distribution_id.value | select(type == "string" and length > 0)' <<<"$outputs")
