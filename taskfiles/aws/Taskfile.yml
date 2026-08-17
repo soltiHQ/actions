@@ -46,17 +46,17 @@ tasks:
               bucket="{{.BUCKET}}";
               test -d "$source_dir";
               test -f "$source_dir/index.html";
-              aws s3 sync "$source_dir" "s3://$bucket"
-                --exclude "index.html"
-                --cache-control "public,max-age=31536000,immutable"
+              aws s3 sync "$source_dir" "s3://$bucket" \
+                --exclude "index.html" \
+                --cache-control "public,max-age=31536000,immutable" \
                 --only-show-errors;
-              aws s3 cp "$source_dir/index.html" "s3://$bucket/index.html"
-                --cache-control "no-cache,no-store,must-revalidate"
-                --content-type "text/html; charset=utf-8"
+              aws s3 cp "$source_dir/index.html" "s3://$bucket/index.html" \
+                --cache-control "no-cache,no-store,must-revalidate" \
+                --content-type "text/html; charset=utf-8" \
                 --only-show-errors;
-              aws s3 sync "$source_dir" "s3://$bucket"
-                --delete
-                --exclude "index.html"
+              aws s3 sync "$source_dir" "s3://$bucket" \
+                --delete \
+                --exclude "index.html" \
                 --only-show-errors;
             '
 
@@ -72,12 +72,12 @@ tasks:
             bash -c '
               set -euo pipefail;
               distribution_id="{{.DISTRIBUTION_ID}}";
-              invalidation=$(aws cloudfront create-invalidation
-                --distribution-id "$distribution_id"
-                --paths "/*"
-                --query "Invalidation.Id"
+              invalidation=$(aws cloudfront create-invalidation \
+                --distribution-id "$distribution_id" \
+                --paths "/*" \
+                --query "Invalidation.Id" \
                 --output text);
-              aws cloudfront wait invalidation-completed
-                --distribution-id "$distribution_id"
+              aws cloudfront wait invalidation-completed \
+                --distribution-id "$distribution_id" \
                 --id "$invalidation";
             '
